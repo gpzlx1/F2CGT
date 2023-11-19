@@ -1,7 +1,7 @@
 #ifndef PG_ATOMIC_H_
 #define PG_ATOMIC_H_
 
-#include "common.h"
+#include "../common.h"
 
 namespace pg {
 namespace atomic {

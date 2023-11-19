@@ -1,8 +1,8 @@
 #ifndef PG_HASHMAP_H_
 #define PG_HASHMAP_H_
 
+#include "../common.h"
 #include "atomic.h"
-#include "common.h"
 
 namespace pg {
 

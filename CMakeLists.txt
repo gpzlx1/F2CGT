@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.15.0)
 project(pg LANGUAGES CUDA CXX)
 
+# set flag
+set(CMAKE_CXX_FLAGS "-Wall -Wextra")
+set(CMAKE_CXX_FLAGS_DEBUG "-g")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+set(CMAKE_BUILD_TYPE Release)
+
 # find torch
 file(TO_NATIVE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/scripts/find_torch.py FIND_TORCH_PY)
 set(PYTHON_INTERP python)
@@ -18,25 +24,23 @@ find_package(Torch REQUIRED)
 list(APPEND PG_EXTERNAL_LIB ${TORCH_LIBRARIES})
 
 
-# set flag
-set(CMAKE_CXX_FLAGS "-Wall -Wextra")
-set(CMAKE_CXX_FLAGS_DEBUG "-g")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+
 
 # Define our library target
 file(GLOB PG_SRC
-  src/*.cu
+  src/cuda/*.cu
+  src/cuda/*.cc
   src/*.cc
 )
 add_library(pg SHARED ${PG_SRC})
 set_target_properties(pg PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-set_target_properties(pg PROPERTIES CUDA_STANDARD 14)
+set_target_properties(pg PROPERTIES CUDA_STANDARD 17)
 set_target_properties(pg PROPERTIES POSITION_INDEPENDENT_CODE ON)
 TARGET_COMPILE_OPTIONS(
   pg PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-extended-lambda>)
 
-# Enable C++14
-target_compile_features(pg PRIVATE cxx_std_14)
+# Enable C++17
+target_compile_features(pg PRIVATE cxx_std_17)
 
 # Link against LibTorch
 target_link_libraries(pg ${PG_EXTERNAL_LIB})

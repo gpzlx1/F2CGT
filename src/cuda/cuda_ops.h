@@ -12,6 +12,10 @@ torch::Tensor FeatureFetchDataWithCachingCUDA(
     torch::Tensor hashed_key_tensor, torch::Tensor hashed_value_tensor);
 
 torch::Tensor FeatureFetchDataCUDA(torch::Tensor data, torch::Tensor nid);
+
+void meanaggr(torch::Tensor &output, const torch::Tensor &input,
+              const torch::Tensor &src, const torch::Tensor &dst, int64_t dim,
+              int64_t node_num, int64_t edge_num);
 };  // namespace pg
 
 #endif

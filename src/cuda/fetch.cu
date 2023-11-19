@@ -1,6 +1,6 @@
-#include "common.h"
+#include "../common.h"
+#include "cuda_ops.h"
 #include "hashmap.h"
-#include "pg_ops.h"
 
 #define BLOCK_SIZE 128
 

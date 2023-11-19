@@ -1,8 +1,8 @@
 #include <thrust/for_each.h>
 #include <thrust/iterator/counting_iterator.h>
-#include "common.h"
+#include "../common.h"
+#include "cuda_ops.h"
 #include "hashmap.h"
-#include "pg_ops.h"
 
 namespace pg {
 std::tuple<torch::Tensor, torch::Tensor> CreateHashMapTensorCUDA(
