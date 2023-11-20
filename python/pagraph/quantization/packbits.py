@@ -40,6 +40,15 @@ def packbits(tensor, dim=-1, mask=0b00000001, out=None, dtype=torch.uint8):
         sliced_output |= compress
     return out
 
+# mypackbits calls the C++ function
+def mypackbits(tensor, dim=-1, mask=0b00000001, out=None, dtype=torch.uint8):
+    assert dtype == torch.uint8, "only support uint8"
+    if dim < 0:
+        dim = tensor.dim() + dim    # poor C doesn't support dim=-1
+    return torch.ops.pg_ops._CAPI_packbits(tensor, dim, mask)
+
+# print("Hint: using mypackbits written in C++")
+# packbits = mypackbits
 
 def unpackbits(tensor,
                shape,
