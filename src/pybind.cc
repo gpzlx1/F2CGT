@@ -11,5 +11,5 @@ TORCH_LIBRARY(pg_ops, m) {
       .def("_CAPI_fetch_feature_data", &FeatureFetchDataCUDA)
       .def("_CAPI_fetch_feature_data_with_caching",
            &FeatureFetchDataWithCachingCUDA)
-      .def("_CAPI_meanaggr", &meanaggr, "meanaggr kernel warpper");
+      .def("_CAPI_meanaggr", &meanaggr);
 }
