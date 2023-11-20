@@ -23,7 +23,12 @@ set(Torch_DIR "${TORCH_PREFIX}/Torch")
 find_package(Torch REQUIRED)
 list(APPEND PG_EXTERNAL_LIB ${TORCH_LIBRARIES})
 
-
+# Set openmp
+include(FindOpenMP)
+if(OPENMP_FOUND)
+  set(CMAKE_CXX_FLAGS "${OpenMP_CXX_FLAGS} ${CMAKE_CXX_FLAGS}")
+endif(OPENMP_FOUND)
+message(STATUS "Build with OpenMP")
 
 
 # Define our library target
