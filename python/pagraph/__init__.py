@@ -6,3 +6,4 @@ so_path = os.path.join(package_path, 'libpg.so')
 torch.classes.load_library(so_path)
 
 from .feature_cache import FeatureCacheServer
+from .quantization import *
