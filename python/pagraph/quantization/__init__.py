@@ -1,4 +1,4 @@
 from .compresser import Compresser
 from .kmeans import kmeans, get_centers, kmeans_predict, pairwise_distance, pairwise_cosine
 from .packbits import packbits, unpackbits
-from .utils import sq_compress, sq_decompress
+from .utils import sq_compress, sq_decompress, vq_compress, vq_decompress
