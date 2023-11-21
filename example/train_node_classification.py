@@ -309,6 +309,8 @@ def main(args):
         g, num_classes = load_ogb("ogbn-products", args.root)
     elif args.dataset == "ogbn-papers100M":
         g, num_classes = load_ogb("ogbn-papers100M", args.root)
+    g = g.formats('csc')
+    g.create_formats_()
     if args.seeds_rate > 0:
         num_nodes = g.num_nodes()
         num_train = int(num_nodes * args.seeds_rate)
@@ -322,7 +324,6 @@ def main(args):
                                                   test_nid.numel()))
 
     data = train_nid, val_nid, test_nid, num_classes, g
-
     import torch.multiprocessing as mp
     mp.spawn(run, args=(args.num_gpus, data, args), nprocs=args.num_gpus)
 

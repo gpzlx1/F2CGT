@@ -3,3 +3,4 @@ build
 *.json
 *.egg*
 __pycache__
+*.log
