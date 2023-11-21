@@ -4,6 +4,7 @@ import numpy as np
 import tqdm
 from .packbits import packbits, unpackbits
 from .kmeans import get_centers, kmeans_predict
+from cuml import KMeans
 
 
 def sq_compress(tensor, target_bits, device):
@@ -27,7 +28,8 @@ def sq_compress(tensor, target_bits, device):
     epsilon = 1e-5
 
     perm = torch.randperm(num_items)
-    sample = tensor[perm[:10_0000]]
+    sample_size = num_items // 10 if num_items // 10 >= 10_0000 else 10_0000
+    sample = tensor[perm[:sample_size]]
 
     fmin = max(np.percentile(np.abs(sample), 0.5), epsilon)
     fmax = max(np.percentile(np.abs(sample), 99.5), 2 * epsilon)
@@ -124,8 +126,9 @@ def sq_decompress(compressed_tensor, feat_dim, codebook):
 def vq_compress(tensor, width, length, device):
     num_items = tensor.shape[0]
     feat_dim = tensor.shape[1]
+    num_parts = (feat_dim + width - 1) // width
 
-    codebooks = torch.zeros((math.ceil(feat_dim / width), length, width))
+    codebooks = torch.zeros((num_parts, length, width))
 
     if length <= 256:
         dtype = torch.uint8
@@ -135,42 +138,29 @@ def vq_compress(tensor, width, length, device):
         dtype = torch.int32
 
     perm = torch.randperm(num_items)
-    sample = tensor[perm[:10_0000]]
+    sample_size = num_items // 10 if num_items // 10 >= 10_0000 else 10_0000
+    sample = tensor[perm[:sample_size]].to(device)
 
     print("generate codebooks:")
-    distance = "cosine"
-    for i in tqdm.trange(0, math.ceil(feat_dim / width)):
+    kmeans_list = [KMeans(n_clusters=length) for _ in range(num_parts)]
+    for i in tqdm.trange(0, num_parts):
         X = sample[:, i * width:(i + 1) * width]
-
-        dist = X.norm(dim=1, p=2)
-        rim = torch.quantile(dist, 0.8 / length)
-        out = torch.ge(dist, rim)
-
-        cluster_centers_o = get_centers(X=X[out],
-                                        num_clusters=length,
-                                        distance=distance,
-                                        tol=5e-2 * length,
-                                        device=device)
-        codebooks[i, :, :feat_dim - i * width] = cluster_centers_o
+        kmeans_list[i].fit(X)
+        cluster_centers = kmeans_list[i].cluster_centers_
+        codebooks[i, :, :feat_dim - i * width] = torch.tensor(cluster_centers)
         del X
 
-    cluster_ids = torch.empty((num_items, math.ceil(feat_dim / width)),
-                              dtype=dtype)
+    cluster_ids = torch.empty((num_items, num_parts), dtype=dtype)
     compress_batch_size = 100_0000 if num_items > 100_0000 else num_items
-    for i in tqdm.trange(0, num_items, compress_batch_size):
-        start = i * compress_batch_size
-        end = (i + 1) * compress_batch_size
+    for step in tqdm.trange(0, num_items, compress_batch_size):
+        start = step
+        end = step + compress_batch_size
         tensor_ = tensor[start:end].to(device).to(torch.float32)
 
-        for j in range(math.ceil(feat_dim / width)):
+        for j in range(num_parts):
             X = tensor_[:, j * width:(j + 1) * width]
-            cluster_ids_x = kmeans_predict(X,
-                                           codebooks[j, :, :feat_dim -
-                                                     j * width],
-                                           distance,
-                                           device=device)
-
-            cluster_ids[start:end, j] = cluster_ids_x
+            labels = kmeans_list[j].predict(X)
+            cluster_ids[start:end, j] = torch.tensor(labels, dtype=dtype)
 
     return cluster_ids, codebooks
 
@@ -190,10 +180,10 @@ def vq_decompress(compressed_features, feat_dim, codebook):
         end = (i + 1) * width
 
         result[:, begin:end] = torch.index_select(
-            codebook[i], 0, compressed_features[:, i].flatten())
+            codebook[i], 0, compressed_features[:, i].flatten().long())
 
     result[:, (num_parts - 1) * width:] = torch.index_select(
-        codebook[num_parts - 1, :, :self.feat_dim - (num_parts - 1) * width],
-        0, compressed_features[:, num_parts - 1].flatten())
+        codebook[num_parts - 1, :, :feat_dim - (num_parts - 1) * width], 0,
+        compressed_features[:, num_parts - 1].flatten().long())
 
     return result

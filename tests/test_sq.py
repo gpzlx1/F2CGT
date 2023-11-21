@@ -2,7 +2,7 @@ import torch
 from pagraph import sq_compress, sq_decompress
 import time
 
-DEVICE = 'cpu'
+DEVICE = 'cuda'
 SIZE = 500_0000
 FEAT_DIM = 128
 TARGET_BITS = 8
@@ -32,7 +32,7 @@ print(decompress_features.device)
 # print(decompress_features[0])
 print()
 
-for i in range(5):
+for i in range(2):
     begin = time.time()
     compressed_features, codebook = sq_compress(features, TARGET_BITS, 'cuda')
     torch.cuda.synchronize()
@@ -44,7 +44,7 @@ print()
 compressed_features = compressed_features.to(DEVICE)
 codebook = codebook.to(DEVICE)
 torch.cuda.synchronize()
-for i in range(5):
+for i in range(2):
     print()
     begin = time.time()
     decompress_features = sq_decompress(compressed_features, FEAT_DIM,

@@ -33,16 +33,17 @@ print(decompress_features.device)
 
 print(features[0])
 print(decompress_features[0])
-print()
 print(
-    torch.nn.functional.cosine_similarity(features[0],
-                                          decompress_features[0],
-                                          dim=0))
-exit()
+    torch.nn.functional.cosine_similarity(features[10:],
+                                          decompress_features[10:],
+                                          dim=1))
 
-for i in range(5):
+print()
+
+for i in range(2):
     begin = time.time()
-    compressed_features, codebook = sq_compress(features, TARGET_BITS, 'cuda')
+    compressed_features, codebook = vq_compress(features, WIDTH, LENGTH,
+                                                DEVICE)
     torch.cuda.synchronize()
     end = time.time()
     print("Time: {}".format((end - begin) * 1000))
@@ -52,13 +53,11 @@ print()
 compressed_features = compressed_features.to(DEVICE)
 codebook = codebook.to(DEVICE)
 torch.cuda.synchronize()
-for i in range(5):
+for i in range(2):
     print()
     begin = time.time()
-    decompress_features = sq_decompress(compressed_features, FEAT_DIM,
+    decompress_features = vq_decompress(compressed_features, FEAT_DIM,
                                         codebook)
     torch.cuda.synchronize()
     end = time.time()
-    print(decompress_features.shape, decompress_features.device,
-          decompress_features.dtype)
     print("Time: {}".format((end - begin) * 1000))
