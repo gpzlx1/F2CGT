@@ -38,6 +38,7 @@ def evaluate(model, g, inputs, labels, val_nid, test_nid, batch_size, device):
 def presampling(g, dataloader, train_data, num_epochs=1):
     presampling_heat = torch.zeros((g.num_nodes(), ), dtype=torch.float32)
     model, loss_fcn, optimizer = train_data
+    tic = time.time()
     for epoch in range(num_epochs):
         with model.join():
             # run some epochs to count presampling heat and max allocated cuda memory
@@ -52,6 +53,7 @@ def presampling(g, dataloader, train_data, num_epochs=1):
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+    toc = time.time()
 
     presampling_heat_accessed = presampling_heat[presampling_heat > 0]
     mem_used = torch.cuda.max_memory_allocated()
@@ -63,6 +65,7 @@ def presampling(g, dataloader, train_data, num_epochs=1):
         torch.mean(presampling_heat_accessed).item())
     info += "Max allocated cuda mem: {:.3f} GB\n".format(mem_used / 1024 /
                                                          1024 / 1024)
+    info += "Presampling time: {:.3f} s\n".format(toc - tic)
     info += "========================================"
     print(info)
 
@@ -108,8 +111,9 @@ def run(rank, world_size, data, args):
     presampling_heat, cuda_mem_used = presampling(g, dataloader,
                                                   (model, loss_fcn, optimizer))
     reserved_mem = 1.0 * 1024 * 1024 * 1024
-    gpu_capacity = torch.cuda.mem_get_info(
-        torch.cuda.current_device())[1] - cuda_mem_used - reserved_mem
+    gpu_capacity = int(
+        torch.cuda.mem_get_info(torch.cuda.current_device())[1] -
+        cuda_mem_used - reserved_mem)
     features = g.ndata.pop("features")
     feature_cache = FeatureCache(features)
     feature_cache.create_cache(gpu_capacity, presampling_heat)
@@ -306,9 +310,16 @@ def main(args):
         g, num_classes = load_ogb("ogbn-products", args.root)
     elif args.dataset == "ogbn-papers100M":
         g, num_classes = load_ogb("ogbn-papers100M", args.root)
+    # num_nodes = g.num_nodes()
+    # num_train = int(num_nodes * 0.1)
+    # train_nid = torch.randperm(num_nodes)[:num_train]
     train_nid = g.ndata["train_mask"].nonzero().flatten()
     val_nid = g.ndata["val_mask"].nonzero().flatten()
     test_nid = g.ndata["test_mask"].nonzero().flatten()
+    print("Train: {} | Val: {} | Test: {}".format(train_nid.numel(),
+                                                  val_nid.numel(),
+                                                  test_nid.numel()))
+
     data = train_nid, val_nid, test_nid, num_classes, g
 
     import torch.multiprocessing as mp

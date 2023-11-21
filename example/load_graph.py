@@ -22,6 +22,7 @@ def load_ogb(name, root="dataset"):
     splitted_idx = data.get_idx_split()
     graph, labels = data[0]
     labels = labels[:, 0]
+    labels[th.isnan(labels)] = 0
 
     graph.ndata["features"] = graph.ndata.pop("feat")
     graph.ndata["labels"] = labels
