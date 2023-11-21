@@ -11,7 +11,7 @@ from models import LinkPredSAGE
 import torch.distributed as dist
 import torch
 from pagraph import FeatureCache
-from load_graph import load_ogb_link_pred
+from load_graph import load_ogb
 
 torch.manual_seed(25)
 
@@ -65,14 +65,12 @@ def run(rank, world_size, data, args):
                             world_size=world_size,
                             rank=rank)
     # Unpack data
-    train_eid, g, reverse_eids = data
+    train_eid, g = data
     shuffle = True
     sampler = dgl.dataloading.NeighborSampler(
         [int(fanout) for fanout in args.fan_out.split(",")])
     sampler = dgl.dataloading.as_edge_prediction_sampler(
         sampler,
-        exclude="reverse_id",
-        reverse_eids=reverse_eids.cuda(),
         negative_sampler=dgl.dataloading.negative_sampler.Uniform(1),
     )
     dataloader = dgl.dataloading.DataLoader(g,
@@ -295,13 +293,13 @@ def run(rank, world_size, data, args):
 
 
 def main(args):
-    g, reverse_eids = load_ogb_link_pred(args.dataset, args.root)
-    num_edges = g.num_nodes()
+    g, _ = load_ogb(args.dataset, args.root)
+    num_edges = g.num_edges()
     num_train = int(num_edges * args.seeds_rate)
     train_eid = torch.randperm(num_edges)[:num_train]
     print("Train: {}".format(train_eid.numel()))
 
-    data = train_eid, g, reverse_eids
+    data = train_eid, g
 
     import torch.multiprocessing as mp
     mp.spawn(run, args=(args.num_gpus, data, args), nprocs=args.num_gpus)
@@ -321,7 +319,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--num_epochs", type=int, default=20)
     parser.add_argument("--num_hidden", type=int, default=16)
-    parser.add_argument("--num_layers", type=int, default=3)
+    parser.add_argument("--num_layers", type=int, default=2)
     parser.add_argument("--fan_out", type=str, default="5,10,15")
     parser.add_argument("--batch_size", type=int, default=1000)
     parser.add_argument("--batch_size_eval", type=int, default=100000)
@@ -331,12 +329,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dataset",
         type=str,
-        default="ogbl-ppa",
-        help="datasets: ogbl-citation2",
+        default="ogbn-products",
+        help="datasets: ogbn-products, ogbn-papers100M",
     )
     parser.add_argument("--root", type=str, default="/data")
     parser.add_argument("--breakdown", action="store_true")
-    parser.add_argument("--seeds_rate", default=0.1, type=float)
+    parser.add_argument("--seeds_rate", default=0.001, type=float)
     args = parser.parse_args()
 
     print(args)

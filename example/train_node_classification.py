@@ -303,12 +303,7 @@ def run(rank, world_size, data, args):
 
 
 def main(args):
-    if args.dataset == "reddit":
-        g, num_classes = load_reddit()
-    elif args.dataset == "ogbn-products":
-        g, num_classes = load_ogb("ogbn-products", args.root)
-    elif args.dataset == "ogbn-papers100M":
-        g, num_classes = load_ogb("ogbn-papers100M", args.root)
+    g, num_classes = load_ogb(args.dataset, args.root)
     g = g.formats('csc')
     g.create_formats_()
     if args.seeds_rate > 0:
@@ -354,7 +349,7 @@ if __name__ == "__main__":
         "--dataset",
         type=str,
         default="ogbn-products",
-        help="datasets: reddit, ogbn-products, ogbn-papers100M",
+        help="datasets: ogbn-products, ogbn-papers100M",
     )
     parser.add_argument("--root", type=str, default="/data")
     parser.add_argument("--breakdown", action="store_true")
