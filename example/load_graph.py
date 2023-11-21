@@ -48,6 +48,43 @@ def load_ogb(name, root="dataset"):
     return graph, num_labels
 
 
+def to_bidirected_with_reverse_mapping(g):
+    """Makes a graph bidirectional, and returns a mapping array ``mapping`` where ``mapping[i]``
+    is the reverse edge of edge ID ``i``. Does not work with graphs that have self-loops.
+    """
+    g_simple, mapping = dgl.to_simple(dgl.add_reverse_edges(g),
+                                      return_counts="count",
+                                      writeback_mapping=True)
+    c = g_simple.edata["count"]
+    num_edges = g.num_edges()
+    mapping_offset = th.zeros(g_simple.num_edges() + 1, dtype=g_simple.idtype)
+    mapping_offset[1:] = c.cumsum(0)
+    idx = mapping.argsort()
+    idx_uniq = idx[mapping_offset[:-1]]
+    reverse_idx = th.where(idx_uniq >= num_edges, idx_uniq - num_edges,
+                           idx_uniq + num_edges)
+    reverse_mapping = mapping[reverse_idx]
+    # sanity check
+    src1, dst1 = g_simple.edges()
+    src2, dst2 = g_simple.find_edges(reverse_mapping)
+    assert th.equal(src1, dst2)
+    assert th.equal(src2, dst1)
+    return g_simple, reverse_mapping
+
+
+def load_ogb_link_pred(name, root="dataset"):
+    from ogb.linkproppred import DglLinkPropPredDataset
+
+    print("load", name)
+    data = DglLinkPropPredDataset(name=name, root=root)
+    print("finish loading", name)
+    g = data[0]
+    g, reverse_eids = to_bidirected_with_reverse_mapping(g)
+    g.ndata["features"] = g.ndata.pop("feat").float()
+    print("finish constructing", name)
+    return g, reverse_eids
+
+
 def inductive_split(g):
     """Split the graph into training graph, validation graph, and test graph by training
     and validation masks.  Suitable for inductive models."""

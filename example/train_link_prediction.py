@@ -7,32 +7,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import dgl
-from models import SAGE, compute_acc
+from models import LinkPredSAGE
 import torch.distributed as dist
 import torch
 from pagraph import FeatureCache
-from load_graph import load_ogb, load_reddit
+from load_graph import load_ogb_link_pred
 
 torch.manual_seed(25)
-
-
-def evaluate(model, g, inputs, labels, val_nid, test_nid, batch_size, device):
-    """
-    Evaluate the model on the validation set specified by ``val_nid``.
-    g : The entire graph.
-    inputs : The features of all the nodes.
-    labels : The labels of all the nodes.
-    val_nid : the node Ids for validation.
-    batch_size : Number of nodes to compute at the same time.
-    device : The GPU device to evaluate on.
-    """
-    model.eval()
-    with th.no_grad():
-        pred = model.inference(g, inputs, batch_size, device)
-    model.train()
-    return compute_acc(pred[val_nid],
-                       labels[val_nid]), compute_acc(pred[test_nid],
-                                                     labels[test_nid])
 
 
 def presampling(g, dataloader, train_data, num_epochs=1):
@@ -42,14 +23,18 @@ def presampling(g, dataloader, train_data, num_epochs=1):
     for epoch in range(num_epochs):
         with model.join():
             # run some epochs to count presampling heat and max allocated cuda memory
-            for step, (input_nodes, seeds, blocks) in enumerate(dataloader):
+            for step, (input_nodes, pair_graph, neg_pair_graph,
+                       blocks) in enumerate(dataloader):
                 input_nodes = input_nodes.cpu()
                 presampling_heat[input_nodes] += 1
                 batch_inputs = g.ndata["features"][input_nodes].to("cuda")
-                batch_labels = blocks[-1].dstdata["labels"]
-                batch_labels = batch_labels.long()
-                batch_pred = model(blocks, batch_inputs)
-                loss = loss_fcn(batch_pred, batch_labels)
+                pos_score, neg_score = model(pair_graph, neg_pair_graph,
+                                             blocks, batch_inputs)
+                score = torch.cat([pos_score, neg_score])
+                pos_label = torch.ones_like(pos_score)
+                neg_label = torch.zeros_like(neg_score)
+                labels = torch.cat([pos_label, neg_label])
+                loss = loss_fcn(score, labels)
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -80,14 +65,18 @@ def run(rank, world_size, data, args):
                             world_size=world_size,
                             rank=rank)
     # Unpack data
-    train_nid, val_nid, test_nid, n_classes, g = data
+    train_eid, g, reverse_eids = data
     shuffle = True
     sampler = dgl.dataloading.NeighborSampler(
-        [int(fanout) for fanout in args.fan_out.split(",")],
-        prefetch_labels=["labels"],
+        [int(fanout) for fanout in args.fan_out.split(",")])
+    sampler = dgl.dataloading.as_edge_prediction_sampler(
+        sampler,
+        exclude="reverse_id",
+        reverse_eids=reverse_eids.cuda(),
+        negative_sampler=dgl.dataloading.negative_sampler.Uniform(1),
     )
     dataloader = dgl.dataloading.DataLoader(g,
-                                            train_nid,
+                                            train_eid,
                                             sampler,
                                             device=device,
                                             batch_size=args.batch_size,
@@ -97,14 +86,13 @@ def run(rank, world_size, data, args):
                                             use_ddp=True,
                                             use_uva=True)
     # Define model and optimizer
-    model = SAGE(g.ndata["features"].shape[1], args.num_hidden, n_classes,
-                 args.num_layers, F.relu, args.dropout)
+    model = LinkPredSAGE(g.ndata["features"].shape[1], args.num_hidden,
+                         args.num_layers, F.relu)
     model = model.to(device)
     model = nn.parallel.DistributedDataParallel(model,
                                                 device_ids=[rank],
                                                 output_device=rank)
-    loss_fcn = nn.CrossEntropyLoss()
-    loss_fcn = loss_fcn.to(device)
+    loss_fcn = F.binary_cross_entropy_with_logits
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     presampling_heat, cuda_mem_used = presampling(g, dataloader,
@@ -145,7 +133,8 @@ def run(rank, world_size, data, args):
                 torch.cuda.synchronize()
             tic = time.time()
             tic_step = time.time()
-            for step, (input_nodes, seeds, blocks) in enumerate(dataloader):
+            for step, (input_nodes, pair_graph, neg_pair_graph,
+                       blocks) in enumerate(dataloader):
                 if args.breakdown:
                     dist.barrier()
                     torch.cuda.synchronize()
@@ -153,8 +142,6 @@ def run(rank, world_size, data, args):
 
                 load_begin = time.time()
                 batch_inputs = feature_cache[input_nodes]
-                batch_labels = blocks[-1].dstdata["labels"]
-                batch_labels = batch_labels.long()
                 num_seeds += len(blocks[-1].dstdata[dgl.NID])
                 num_inputs += len(blocks[0].srcdata[dgl.NID])
                 if args.breakdown:
@@ -163,8 +150,13 @@ def run(rank, world_size, data, args):
                 load_time += time.time() - load_begin
 
                 forward_start = time.time()
-                batch_pred = model(blocks, batch_inputs)
-                loss = loss_fcn(batch_pred, batch_labels)
+                pos_score, neg_score = model(pair_graph, neg_pair_graph,
+                                             blocks, batch_inputs)
+                score = torch.cat([pos_score, neg_score])
+                pos_label = torch.ones_like(pos_score)
+                neg_label = torch.zeros_like(neg_score)
+                labels = torch.cat([pos_label, neg_label])
+                loss = loss_fcn(score, labels)
                 if args.breakdown:
                     dist.barrier()
                     torch.cuda.synchronize()
@@ -303,25 +295,13 @@ def run(rank, world_size, data, args):
 
 
 def main(args):
-    if args.dataset == "reddit":
-        g, num_classes = load_reddit()
-    elif args.dataset == "ogbn-products":
-        g, num_classes = load_ogb("ogbn-products", args.root)
-    elif args.dataset == "ogbn-papers100M":
-        g, num_classes = load_ogb("ogbn-papers100M", args.root)
-    if args.seeds_rate > 0:
-        num_nodes = g.num_nodes()
-        num_train = int(num_nodes * args.seeds_rate)
-        train_nid = torch.randperm(num_nodes)[:num_train]
-    else:
-        train_nid = g.ndata["train_mask"].nonzero().flatten()
-    val_nid = g.ndata["val_mask"].nonzero().flatten()
-    test_nid = g.ndata["test_mask"].nonzero().flatten()
-    print("Train: {} | Val: {} | Test: {}".format(train_nid.numel(),
-                                                  val_nid.numel(),
-                                                  test_nid.numel()))
+    g, reverse_eids = load_ogb_link_pred(args.dataset, args.root)
+    num_edges = g.num_nodes()
+    num_train = int(num_edges * args.seeds_rate)
+    train_eid = torch.randperm(num_edges)[:num_train]
+    print("Train: {}".format(train_eid.numel()))
 
-    data = train_nid, val_nid, test_nid, num_classes, g
+    data = train_eid, g, reverse_eids
 
     import torch.multiprocessing as mp
     mp.spawn(run, args=(args.num_gpus, data, args), nprocs=args.num_gpus)
@@ -348,16 +328,15 @@ if __name__ == "__main__":
     parser.add_argument("--log_every", type=int, default=20)
     parser.add_argument("--eval_every", type=int, default=5)
     parser.add_argument("--lr", type=float, default=0.003)
-    parser.add_argument("--dropout", type=float, default=0.5)
     parser.add_argument(
         "--dataset",
         type=str,
-        default="ogbn-products",
-        help="datasets: reddit, ogbn-products, ogbn-papers100M",
+        default="ogbl-ppa",
+        help="datasets: ogbl-citation2",
     )
     parser.add_argument("--root", type=str, default="/data")
     parser.add_argument("--breakdown", action="store_true")
-    parser.add_argument("--seeds_rate", default=0.0, type=float)
+    parser.add_argument("--seeds_rate", default=0.1, type=float)
     args = parser.parse_args()
 
     print(args)

@@ -79,6 +79,71 @@ class SAGE(nn.Module):
         return y
 
 
+class LinkPredSAGE(nn.Module):
+
+    def __init__(self, in_size, hid_size, n_layers, activation):
+        super().__init__()
+        self.n_layers = n_layers
+        self.layers = nn.ModuleList()
+        self.layers.append(dglnn.SAGEConv(in_size, hid_size, "mean"))
+        for i in range(1, n_layers):
+            self.layers.append(dglnn.SAGEConv(hid_size, hid_size, "mean"))
+        self.hid_size = hid_size
+        self.activation = activation
+        self.predictor = nn.Sequential()
+        for i in range(n_layers - 1):
+            self.predictor.append(nn.Linear(hid_size, hid_size))
+            self.predictor.append(nn.ReLU())
+        self.predictor.append(nn.Linear(hid_size, 1))
+
+    def forward(self, pair_graph, neg_pair_graph, blocks, x):
+        h = x
+        for l, (layer, block) in enumerate(zip(self.layers, blocks)):
+            h = layer(block, h)
+            if l != len(self.layers) - 1:
+                h = self.activation(h)
+        pos_src, pos_dst = pair_graph.edges()
+        neg_src, neg_dst = neg_pair_graph.edges()
+        h_pos = self.predictor(h[pos_src] * h[pos_dst])
+        h_neg = self.predictor(h[neg_src] * h[neg_dst])
+        return h_pos, h_neg
+
+    def inference(self, g, device, batch_size):
+        """Layer-wise inference algorithm to compute GNN node embeddings."""
+        feat = g.ndata["feat"]
+        sampler = MultiLayerFullNeighborSampler(1,
+                                                prefetch_node_feats=["feat"])
+        dataloader = DataLoader(
+            g,
+            th.arange(g.num_nodes()).to(g.device),
+            sampler,
+            device=device,
+            batch_size=batch_size,
+            shuffle=False,
+            drop_last=False,
+            num_workers=0,
+        )
+        buffer_device = th.device("cpu")
+        pin_memory = buffer_device != device
+        for l, layer in enumerate(self.layers):
+            y = th.empty(
+                g.num_nodes(),
+                self.hid_size,
+                device=buffer_device,
+                pin_memory=pin_memory,
+            )
+            feat = feat.to(device)
+            for input_nodes, output_nodes, blocks in tqdm.tqdm(
+                    dataloader, desc="Inference"):
+                x = feat[input_nodes]
+                h = layer(blocks[0], x)
+                if l != len(self.layers) - 1:
+                    h = F.relu(h)
+                y[output_nodes] = h.to(buffer_device)
+            feat = y
+        return y
+
+
 class DistSAGE(nn.Module):
 
     def __init__(self, in_feats, n_hidden, n_classes, n_layers, activation,
