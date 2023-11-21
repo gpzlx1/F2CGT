@@ -105,8 +105,7 @@ def sq_decompress(compressed_tensor, feat_dim, codebook):
     if target_bits < 8:
         exp = unpackbits(exp,
                          mask=2 * drange - 1,
-                         shape=[exp.shape[0], feat_dim],
-                         dtype=torch.uint8)
+                         shape=[exp.shape[0], feat_dim])
 
     result = None
     if target_bits > 1:
