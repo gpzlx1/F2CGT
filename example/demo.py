@@ -1,29 +1,29 @@
 import torch
 import time
-from pagraph import FeatureCacheServer
+from pagraph import FeatureCache
 
 if __name__ == "__main__":
     cpu_data = torch.arange(0, 10000).reshape(100, 100).float()
     index = torch.randint(0, 100, (100, )).long().cuda()
+    hotness = torch.randint(0, 100000, (100, ))
 
     # part cache
-    cache_nids = torch.randint(0, 100, (20, )).int().cuda()
-    part_cache_server = FeatureCacheServer(cpu_data)
-    part_cache_server.cache_feature(cache_nids, False)
-    assert part_cache_server.fetch_data(index).equal(
-        cpu_data[index.cpu().long()].cuda())
+    gpu_capacity = 20 * (4 * 100 + 8 * 8)
+    part_cache_server = FeatureCache(cpu_data)
+    part_cache_server.create_cache(gpu_capacity, hotness)
+    assert part_cache_server[index].equal(cpu_data[index.cpu().long()].cuda())
     del part_cache_server
 
     # full cache
-    full_cache_server = FeatureCacheServer(cpu_data)
-    full_cache_server.cache_feature(torch.tensor([]).int().cuda(), True)
-    assert full_cache_server.fetch_data(index).equal(
-        cpu_data[index.cpu().long()].cuda())
+    gpu_capacity = 100 * 4 * 100
+    full_cache_server = FeatureCache(cpu_data)
+    full_cache_server.create_cache(gpu_capacity, hotness)
+    assert full_cache_server[index].equal(cpu_data[index.cpu().long()].cuda())
     del full_cache_server
 
     # no cache
-    no_cache_server = FeatureCacheServer(cpu_data)
-    no_cache_server.cache_feature(torch.tensor([]).int().cuda(), False)
-    assert no_cache_server.fetch_data(index).equal(
-        cpu_data[index.cpu().long()].cuda())
+    gpu_capacity = 0
+    no_cache_server = FeatureCache(cpu_data)
+    no_cache_server.create_cache(gpu_capacity, hotness)
+    assert no_cache_server[index].equal(cpu_data[index.cpu().long()].cuda())
     del no_cache_server

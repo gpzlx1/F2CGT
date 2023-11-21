@@ -2,67 +2,113 @@ import torch
 import time
 
 
-class FeatureCacheServer:
+def dtype_sizeof(input):
+    if isinstance(input, str):
+        if input == "int32":
+            return 4
+        elif input == "int64":
+            return 8
+        elif input == "float32":
+            return 4
+        elif input == "float64":
+            return 8
+        elif input == "bool":
+            return 1
+    else:
+        if input == torch.int32:
+            return 4
+        elif input == torch.int64:
+            return 8
+        elif input == torch.float32:
+            return 4
+        elif input == torch.float64:
+            return 8
+        elif input == torch.bool:
+            return 1
 
-    def __init__(self, feature):
-        self.feature = feature
-        self.cached_feature = None
-        self.hashmap_key = None
-        self.hashmap_value = None
-        self.full_cached = False
-        self.no_cached = False
 
-    def cache_feature(self, cache_nids, full_cached=False):
-        self.full_cached = full_cached
+class FeatureCache:
 
-        start = time.time()
-        cache_size = 0
+    def __init__(self, feature, idx_dtype=torch.int64):
+        self._feature = feature
+        self._cached_feature = None
+        self._hashmap = None
+        self._full_cached = False
+        self._no_cached = False
+        self._num_nodes = feature.shape[0]
+        self._idx_dtype = idx_dtype
+        self._hit_num = 0
+        self._lookup_num = 0
 
-        if self.full_cached:
-            self.cached_feature = self.feature.cuda()
-            cache_size = self.cached_feature.numel(
-            ) * self.cached_feature.element_size()
+    def create_cache(self, alloca_mem_size, hotness):
 
+        tic = time.time()
+
+        mem_used = 0
+
+        info = "========================================\n"
+        info += "Rank {} builds feature cache in GPU\n".format(
+            torch.cuda.current_device())
+        info += "GPU alloca_mem_size {:.3f} GB\n".format(alloca_mem_size /
+                                                         1024 / 1024 / 1024)
+
+        idx_dtype_size = dtype_sizeof(self._idx_dtype)
+        item_size = self._feature.element_size() * self._feature.shape[1]
+        cached_num = min(alloca_mem_size // item_size, self._num_nodes)
+        if cached_num < self._num_nodes:
+            item_size_with_hash = item_size + idx_dtype_size * 8
+            cached_num = alloca_mem_size // item_size_with_hash
+
+        info += "Total node num {}\n".format(self._num_nodes)
+        info += "GPU cached node num {}\n".format(cached_num)
+
+        if cached_num <= 0:
+            self._no_cached = True
+            torch.ops.pg_ops._CAPI_pin_tensor(self._feature)
+            mem_used = 0
+        elif cached_num == self._num_nodes:
+            self._full_cached = True
+            self._cached_feature = self._feature.cuda()
+            mem_used = self._feature.element_size() * self._feature.numel()
         else:
-            if cache_nids.numel() > 0:
-                self.cached_feature = self.feature[
-                    cache_nids.cpu().long()].cuda()
-                self.hashmap_key, self.hashmap_value = torch.ops.pg_ops._CAPI_create_hashmap(
-                    cache_nids.cuda())
-                cache_size = self.cached_feature.numel(
-                ) * self.cached_feature.element_size()
+            cached_idx = torch.argsort(hotness, descending=True)[:cached_num]
+            self._hashmap = torch.ops.pg_ops._CAPI_create_hashmap(
+                cached_idx.cuda())
+            self._cached_feature = self._feature[cached_idx].cuda()
+            torch.ops.pg_ops._CAPI_pin_tensor(self._feature)
+            mem_used = cached_num * item_size_with_hash
 
-            else:
-                self.no_cached = True
-                cache_size = 0
+        toc = time.time()
 
-            torch.ops.pg_ops._CAPI_pin_tensor(self.feature)
+        self._hit_num = 0
+        self._lookup_num = 0
+        info += "GPU cache size {:.3f} GB\n".format(mem_used / 1024 / 1024 /
+                                                    1024)
+        info += "Build cache time {:.3f} ms\n".format((toc - tic) * 1000)
+        info += "========================================"
+        print(info)
 
-        torch.cuda.synchronize()
-        end = time.time()
+        return mem_used
 
-        print(
-            "GPU {} takes {:.3f} s to cache feature data, cached size = {:.3f} GB, cache rate = {:.3f}"
-            .format(
-                torch.cuda.current_device(), end - start,
-                cache_size / 1024 / 1024 / 1024, cache_size /
-                (self.feature.element_size() * self.feature.numel())))
-
-    def fetch_data(self, index):
-        if self.full_cached:
-            return torch.index_select(self.cached_feature, 0, index.cuda())
-        elif self.no_cached:
+    def __getitem__(self, index):
+        '''
+        index is a gpu tensor
+        and return gpu tensors (step, mem, power)
+        '''
+        if self._full_cached:
+            return self._cached_feature[index]
+        elif self._no_cached:
             return torch.ops.pg_ops._CAPI_fetch_feature_data(
-                self.feature, index)
+                self._feature, index)
         else:
             return torch.ops.pg_ops._CAPI_fetch_feature_data_with_caching(
-                self.feature,
-                self.cached_feature,
-                self.hashmap_key,
-                self.hashmap_value,
-                index.cuda(),
+                self._feature,
+                self._cached_feature,
+                self._hashmap[0],
+                self._hashmap[1],
+                index,
             )
 
     def __del__(self):
-        if not self.full_cached:
-            torch.ops.pg_ops._CAPI_unpin_tensor(self.feature)
+        if not self._full_cached:
+            torch.ops.pg_ops._CAPI_unpin_tensor(self._feature)
