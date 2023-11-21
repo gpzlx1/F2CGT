@@ -11,7 +11,6 @@ def tensor_dim_slice(tensor, dim, s):
 def packshape(shape, dim, mask, dtype):
     nbits_element = torch.iinfo(dtype).bits
     nbits = 1 if mask == 0b00000001 else 2 if mask == 0b00000011 else 4 if mask == 0b00001111 else 8 if mask == 0b11111111 else None
-    # print(nbits, nbits_element)
     assert nbits is not None and nbits <= nbits_element and nbits_element % nbits == 0
     packed_size = nbits_element // nbits
     shape = list(shape)
@@ -33,22 +32,11 @@ def packbits(tensor, dim=-1, mask=0b00000001, out=None, dtype=torch.uint8):
         sliced_input = tensor_dim_slice(tensor, dim,
                                         slice(idx, idx + width, 1))
         idx += width
-        # print(sliced_input)
         compress = (sliced_input << (nbits * (packed_size - e - 1)))
-        # print(compress)
         sliced_output = out.narrow(dim, 0, sliced_input.shape[dim])
         sliced_output |= compress
     return out
 
-# mypackbits calls the C++ function
-def mypackbits(tensor, dim=-1, mask=0b00000001, out=None, dtype=torch.uint8):
-    assert dtype == torch.uint8, "only support uint8"
-    if dim < 0:
-        dim = tensor.dim() + dim    # poor C doesn't support dim=-1
-    return torch.ops.pg_ops._CAPI_packbits(tensor, dim, mask)
-
-# print("Hint: using mypackbits written in C++")
-# packbits = mypackbits
 
 def unpackbits(tensor,
                shape,
@@ -56,36 +44,20 @@ def unpackbits(tensor,
                mask=0b00000001,
                out=None,
                dtype=torch.uint8):
-    # f0 = time.time()
-    _, packed_size, nbits = packshape(shape,
-                                      dim=dim,
-                                      mask=mask,
-                                      dtype=tensor.dtype)
-    # f1 = time.time()
-    # out = out.zero_() if out is not None else torch.empty(shape, device = tensor.device, dtype = dtype)
-    # out.fill_((1 << nbits) - 1)
-    # torch.cuda.synchronize()
-    # f2 = time.time()
-    # assert tuple(out.shape) == tuple(shape)
-    # p = 0
+
+    _, packed_size, nbits = packshape(
+        shape,
+        dim=dim,
+        mask=mask,
+        dtype=tensor.dtype,
+    )
+
     ts = []
     for e in range(packed_size):
-        t0 = time.time()
-        t1 = time.time()
         ts.append(
             ((tensor >>
               (nbits *
                (packed_size - e - 1))).bitwise_and_((1 << nbits) - 1)).narrow(
                    dim, 0, (shape[dim] - e - 1) // packed_size + 1))
 
-        # out[(slice(None),) * (dim if dim >= 0 else dim + tensor.dim()) + (slice(e, None, packed_size), )] = ((tensor >> (nbits * (packed_size - e - 1))).bitwise_and_((1 << nbits) - 1)).narrow(dim, 0, (out.shape[dim]-e-1)//packed_size+1)
-        # out[(slice(None),) * (dim if dim >= 0 else dim + tensor.dim()) + (slice(p, p+((out.shape[dim]-e-1)//packed_size+1), 1), )] = ((tensor >> (nbits * (packed_size - e - 1))).bitwise_and_((1 << nbits) - 1)).narrow(dim, 0, (out.shape[dim]-e-1)//packed_size+1)
-        # p += (out.shape[dim]-e-1)//packed_size+1
-
-        # torch.cuda.synchronize()
-
-        t2 = time.time()
-        # print("    ", e, t1-t0, t2-t1, t2-t0)
-    # f3 = time.time()
-    # print(f1-f0, f2-f1, f3-f2, f3-f0)
     return torch.cat(ts, -1)
