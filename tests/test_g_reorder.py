@@ -1,6 +1,7 @@
 import torch
 from bifeat import CompressionManager
 import dgl
+import time
 
 CM = CompressionManager(0, 0, 0, 0)
 
@@ -15,22 +16,19 @@ print(g)
 print(features)
 print(train_seeds)
 
-CM.register(g, features, train_seeds)
+indptr, indices, _ = g.adj_tensors('csc')
 
-import time
-
-begin = time.time()
+CM.register(indptr, indices, features, train_seeds)
 CM.presampling([25, 10])
-torch.cuda.synchronize()
-end = time.time()
-print((end - begin) * 1000)
-
-begin = time.time()
-CM.presampling([25, 10])
-torch.cuda.synchronize()
-end = time.time()
-print((end - begin) * 1000)
 
 print(CM.hotness)
+print(CM.hotness.long().sum())
 
+begin = time.time()
 CM.graph_reorder()
+end = time.time()
+print(end - begin)
+
+CM.presampling([25, 10])
+print(CM.hotness)
+print(CM.hotness.long().sum())
