@@ -2,6 +2,13 @@ import torch
 import time
 
 
+def graph_reorder(coo_row, coo_col, reorder_map):
+    reroder_row = reorder_map[coo_row]
+    reorder_col = reorder_col[coo_col]
+    sort_idx = torch.argsort(reroder_row)
+    return reroder_row[sort_idx], reorder_col[sort_idx]
+
+
 def dtype_sizeof(input):
     if isinstance(input, str):
         if input == "int32":
