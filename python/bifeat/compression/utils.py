@@ -84,7 +84,7 @@ def sq_compress(tensor, target_bits, device):
                 tensor_.to(torch.uint8), mask=(1 << target_bits) - 1),
                                                non_blocking=True)
         elif target_bits == 8:
-            compressed_tensor[start:end].copy_(tensor_.to(dtype=torch.int16),
+            compressed_tensor[start:end].copy_(tensor_.to(dtype=torch.int8),
                                                non_blocking=True)
         else:
             raise NotImplementedError
