@@ -30,6 +30,20 @@ PYBIND11_MODULE(BiFeatLib, m) {
       .def("_CAPI_fetch_feature_data_with_caching",
            &FeatureFetchDataWithCachingCUDA, py::arg("cpu_data"),
            py::arg("gpu_data"), py::arg("hashed_key_tensor"),
-           py::arg("hashed_value_tensor"), py::arg("nid"));
+           py::arg("hashed_value_tensor"), py::arg("nid"))
+      .def("_CAPI_cuda_sample_neighbors", &RowWiseSamplingUniformCUDA,
+           py::arg("seeds"), py::arg("indptr"), py::arg("indices"),
+           py::arg("num_picks"), py::arg("replace"))
+      .def("_CAPI_cuda_sample_neighbors_with_caching",
+           &RowWiseSamplingUniformWithCachingCUDA, py::arg("seeds"),
+           py::arg("gpu_indptr"), py::arg("cpu_indptr"), py::arg("gpu_indices"),
+           py::arg("cpu_indices"), py::arg("hash_key"), py::arg("hash_val"),
+           py::arg("num_picks"), py::arg("replace"))
+      .def("_CAPI_cuda_tensor_relabel", &TensorRelabelCUDA,
+           py::arg("mapping_tensors"), py::arg("requiring_relabel_tensors"))
+      .def("_CAPI_get_sub_indptr", &GetSubIndptr, py::arg("nids"),
+           py::arg("indptr"))
+      .def("_CAPI_get_sub_edge_data", &GetSubEdgeData, py::arg("nids"),
+           py::arg("indptr"), py::arg("sub_indptr"), py::arg("edge_data"));
   // .def("_CAPI_meanaggr", & meanaggr);
 }

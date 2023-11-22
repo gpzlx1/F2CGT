@@ -1,6 +1,4 @@
-import torch
-
-from .feature_cache import FeatureCacheServer
+from .cache import *
 from .compression import *
 from .shm import *
 

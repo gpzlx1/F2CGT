@@ -3,7 +3,7 @@ import math
 import numpy as np
 import tqdm
 from .packbits import packbits, unpackbits
-from cuml import KMeans
+# from cuml import KMeans
 
 
 def sq_compress(tensor, target_bits, device):

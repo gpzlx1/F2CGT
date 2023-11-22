@@ -9,7 +9,7 @@ set(CMAKE_BUILD_TYPE Release)
 
 # find python
 find_package(Python 3.6 COMPONENTS Interpreter Development REQUIRED)
-set(PYTHON_INTERP /home/gpzlx1/Project-Q/venv/bin/python)
+set(PYTHON_INTERP python3)
 message(STATUS "Using Python interpreter: ${PYTHON_INTERP}")
 
 # find torch
