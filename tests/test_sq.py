@@ -1,6 +1,7 @@
 import torch
 from bifeat import sq_compress, sq_decompress
 import time
+import BiFeatLib
 
 DEVICE = 'cuda'
 SIZE = 500_0000
@@ -54,3 +55,20 @@ for i in range(2):
     print(decompress_features.shape, decompress_features.device,
           decompress_features.dtype)
     print("Time: {}".format((end - begin) * 1000))
+
+compressed_features = compressed_features.cuda()
+codebook_indices = torch.zeros(compressed_features.shape[0],
+                               dtype=torch.long,
+                               device='cuda')
+codebooks = codebook.unsqueeze(0).cuda()
+for i in range(2):
+    print()
+    print()
+    begin = time.time()
+    decompress_features2 = BiFeatLib._CAPI_sq_decompress(
+        codebook_indices, compressed_features, codebooks, FEAT_DIM)
+    torch.cuda.synchronize()
+    end = time.time()
+    print("Time: {}".format((end - begin) * 1000))
+
+print((decompress_features - decompress_features2).abs().max())

@@ -20,6 +20,10 @@ void meanaggr(torch::Tensor &output, const torch::Tensor &input,
 torch::Tensor vq_decompress(torch::Tensor codebook_indices,
                             torch::Tensor compressed_features,
                             torch::Tensor codebooks, int64_t feat_dim);
+
+torch::Tensor sq_decompress(torch::Tensor codebook_indices,
+                            torch::Tensor compressed_features,
+                            torch::Tensor codebooks, int64_t feat_dim);
 };  // namespace bifeat
 
 #endif

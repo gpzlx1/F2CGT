@@ -77,3 +77,5 @@ for i in range(2):
     torch.cuda.synchronize()
     end = time.time()
     print("Time: {}".format((end - begin) * 1000))
+
+print((decompress_features - decompress_features2).abs().max())

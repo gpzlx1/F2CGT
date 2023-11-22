@@ -34,6 +34,9 @@ PYBIND11_MODULE(BiFeatLib, m) {
 
   m.def("_CAPI_vq_decompress", &vq_decompress, py::arg("codebook_indices"),
         py::arg("compressed_features"), py::arg("codebooks"),
-        py::arg("feat_dim"));
+        py::arg("feat_dim"))
+      .def("_CAPI_sq_decompress", &sq_decompress, py::arg("codebook_indices"),
+           py::arg("compressed_features"), py::arg("codebooks"),
+           py::arg("feat_dim"));
   // .def("_CAPI_meanaggr", & meanaggr);
 }
