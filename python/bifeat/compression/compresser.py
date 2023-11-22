@@ -250,7 +250,7 @@ class CompressionManager(object):
         self.partition_range[1:] = torch.cumsum(self.part_size_list, dim=0)
         self.chunk_size = (self.part_size_list + world_size - 1) // world_size
 
-    def decompress(self, idx):
+    def decompress_old(self, idx):
         output_tensor = torch.empty((idx.numel(), self.features.shape[1]),
                                     dtype=self.features.dtype,
                                     device='cuda')
@@ -275,9 +275,42 @@ class CompressionManager(object):
             elif self.methods[part_index] == 'vq':
                 decompressed_feature = vq_decompress(
                     self.compressed_features[part_index]
-                    [local_part_index].squeeze(0), self.feat_dim,
+                    [local_part_index].unsqueeze(0), self.feat_dim,
                     self.codebooks[part_index][local_codebook_index])
 
             output_tensor[i] = decompressed_feature
+
+        return output_tensor
+
+    def decompress(self, idx):
+        output_tensor = torch.empty((idx.numel(), self.features.shape[1]),
+                                    dtype=self.features.dtype,
+                                    device='cuda')
+        part_indices = torch.searchsorted(
+            self.partition_range, idx, right=True) - 1
+        local_part_indices = idx - self.partition_range[part_indices]
+        local_codebook_indices = local_part_indices // self.chunk_size[
+            part_indices]
+        self.feat_dim = self.features.shape[1]
+
+        for i in range(len(self.part_size_list)):
+            part_index = (part_indices == i).nonzero().flatten()
+            if part_index.numel() > 0:
+                local_part_index = local_part_indices[part_index]
+                local_codebook_index = local_codebook_indices[part_index].cuda(
+                )
+
+                if self.methods[i] == 'sq':
+                    decompressed_feature = capi._CAPI_sq_decompress(
+                        local_codebook_index,
+                        self.compressed_features[i][local_part_index].cuda(),
+                        self.codebooks[i].cuda(), self.feat_dim)
+                elif self.methods[i] == 'vq':
+                    decompressed_feature = capi._CAPI_vq_decompress(
+                        local_codebook_index,
+                        self.compressed_features[i][local_part_index].cuda(),
+                        self.codebooks[i].cuda(), self.feat_dim)
+
+                output_tensor[part_index] = decompressed_feature
 
         return output_tensor

@@ -66,18 +66,19 @@ def main(num_gpus=2):
     torch.cuda.synchronize()
     print("compress time: {}".format(time.time() - begin))
 
-    indices = 8_0000
-    indices = torch.tensor([indices]).long()
+    indices = torch.randint(0, 100_0000, (10_0000, )).long()
 
     begin = time.time()
     out = compression_manager.decompress(indices)
     torch.cuda.synchronize()
     print("decompress time: {}".format(time.time() - begin))
 
-    if chief:
-        print(out[0][:10])
-        print(graph_tensors['features'][compression_manager.dst2src[indices]]
-              [:10])
+    begin = time.time()
+    out2 = compression_manager.decompress_old(indices)
+    torch.cuda.synchronize()
+    print("decompress time: {}".format(time.time() - begin))
+
+    print((out - out2).abs().max())
 
 
 if __name__ == '__main__':
