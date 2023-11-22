@@ -4,7 +4,7 @@
 #include "cuda_ops.h"
 #include "hashmap.h"
 
-namespace pg {
+namespace bifeat {
 std::tuple<torch::Tensor, torch::Tensor> CreateHashMapTensorCUDA(
     torch::Tensor cache_nids) {
   CHECK_CUDA(cache_nids);
@@ -35,4 +35,4 @@ std::tuple<torch::Tensor, torch::Tensor> CreateHashMapTensorCUDA(
   return std::make_tuple(torch::Tensor(), torch::Tensor());
 }
 
-}  // namespace pg
+}  // namespace bifeat

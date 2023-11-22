@@ -1,5 +1,5 @@
 import torch
-from pagraph import vq_compress, vq_decompress
+from bifeat import vq_compress, vq_decompress
 import time
 
 torch.manual_seed(42)

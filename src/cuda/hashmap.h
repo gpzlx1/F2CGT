@@ -4,7 +4,7 @@
 #include "../common.h"
 #include "atomic.h"
 
-namespace pg {
+namespace bifeat {
 
 template <typename IdType>
 struct Hashmap {
@@ -90,6 +90,6 @@ inline int _UpPower(int key) {
   return ret;
 }
 
-}  // namespace pg
+}  // namespace bifeat
 
 #endif

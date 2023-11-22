@@ -1,5 +1,6 @@
 import torch
 import time
+import BiFeatLib as capi
 
 
 class FeatureCacheServer:
@@ -27,7 +28,7 @@ class FeatureCacheServer:
             if cache_nids.numel() > 0:
                 self.cached_feature = self.feature[
                     cache_nids.cpu().long()].cuda()
-                self.hashmap_key, self.hashmap_value = torch.ops.pg_ops._CAPI_create_hashmap(
+                self.hashmap_key, self.hashmap_value = capi._CAPI_create_hashmap(
                     cache_nids.cuda())
                 cache_size = self.cached_feature.numel(
                 ) * self.cached_feature.element_size()
@@ -36,7 +37,7 @@ class FeatureCacheServer:
                 self.no_cached = True
                 cache_size = 0
 
-            torch.ops.pg_ops._CAPI_pin_tensor(self.feature)
+            capi._CAPI_pin_tensor(self.feature)
 
         torch.cuda.synchronize()
         end = time.time()
@@ -52,10 +53,9 @@ class FeatureCacheServer:
         if self.full_cached:
             return torch.index_select(self.cached_feature, 0, index.cuda())
         elif self.no_cached:
-            return torch.ops.pg_ops._CAPI_fetch_feature_data(
-                self.feature, index)
+            return capi._CAPI_fetch_feature_data(self.feature, index)
         else:
-            return torch.ops.pg_ops._CAPI_fetch_feature_data_with_caching(
+            return capi._CAPI_fetch_feature_data_with_caching(
                 self.feature,
                 self.cached_feature,
                 self.hashmap_key,
@@ -65,4 +65,4 @@ class FeatureCacheServer:
 
     def __del__(self):
         if not self.full_cached:
-            torch.ops.pg_ops._CAPI_unpin_tensor(self.feature)
+            capi._CAPI_unpin_tensor(self.feature)

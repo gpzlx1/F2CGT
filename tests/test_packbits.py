@@ -1,6 +1,6 @@
 import torch
 import time
-from pagraph import packbits, unpackbits
+from bifeat import packbits, unpackbits
 
 if __name__ == '__main__':
     # shape = (10, 20)

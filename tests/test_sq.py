@@ -1,5 +1,5 @@
 import torch
-from pagraph import sq_compress, sq_decompress
+from bifeat import sq_compress, sq_decompress
 import time
 
 DEVICE = 'cuda'

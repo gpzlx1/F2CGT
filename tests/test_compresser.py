@@ -1,5 +1,5 @@
 import torch as th
-from pagraph import Compresser
+from bifeat import Compresser
 
 if __name__ == "__main__":
     compresser = Compresser("sq")

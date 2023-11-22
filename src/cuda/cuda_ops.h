@@ -3,7 +3,7 @@
 
 #include <torch/script.h>
 
-namespace pg {
+namespace bifeat {
 std::tuple<torch::Tensor, torch::Tensor> CreateHashMapTensorCUDA(
     torch::Tensor cache_nids);
 
@@ -16,6 +16,6 @@ torch::Tensor FeatureFetchDataCUDA(torch::Tensor data, torch::Tensor nid);
 void meanaggr(torch::Tensor &output, const torch::Tensor &input,
               const torch::Tensor &src, const torch::Tensor &dst, int64_t dim,
               int64_t node_num, int64_t edge_num);
-};  // namespace pg
+};  // namespace bifeat
 
 #endif

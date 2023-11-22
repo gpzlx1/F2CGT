@@ -2,7 +2,7 @@
 #define PG_PIN_MEMORY_H_
 #include "common.h"
 
-namespace pg {
+namespace bifeat {
 void TensorPinMemory(torch::Tensor data) {
   void *mem_ptr = const_cast<void *>(data.storage().data());
   CUDA_CALL(cudaHostRegister(mem_ptr, data.numel() * data.element_size(),
@@ -13,6 +13,6 @@ void TensorUnpinMemory(torch::Tensor data) {
   void *mem_ptr = const_cast<void *>(data.storage().data());
   CUDA_CALL(cudaHostUnregister(mem_ptr));
 };
-}  // namespace pg
+}  // namespace bifeat
 
 #endif

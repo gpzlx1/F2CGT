@@ -4,7 +4,7 @@
 
 #define BLOCK_SIZE 128
 
-namespace pg {
+namespace bifeat {
 
 template <typename IdType, typename IndexType, typename FloatType,
           int TILE_SIZE>
@@ -122,4 +122,4 @@ torch::Tensor FeatureFetchDataCUDA(torch::Tensor data, torch::Tensor nid) {
   return torch::Tensor();
 }
 
-}  // namespace pg
+}  // namespace bifeat

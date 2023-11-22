@@ -3,7 +3,7 @@
 
 #include "../common.h"
 
-namespace pg {
+namespace bifeat {
 namespace atomic {
 
 inline __device__ int64_t AtomicCAS(int64_t *const address,
@@ -52,6 +52,6 @@ inline __device__ uint32_t AtomicCAS(uint32_t *const address,
                    static_cast<Type>(compare), static_cast<Type>(val));
 }
 }  // namespace atomic
-}  // namespace pg
+}  // namespace bifeat
 
 #endif
