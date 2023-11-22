@@ -1,5 +1,6 @@
 import torch
 import time
+import BiFeatLib as capi
 
 
 class FeatureCache:
@@ -15,7 +16,7 @@ class FeatureCache:
         self._lookup_num = 0
         self._enable_uva = enalbe_uva
         if self._enable_uva:
-            torch.ops.pg_ops._CAPI_pin_tensor(self._feature)
+            capi._CAPI_pin_tensor(self._feature)
 
         self.cache_built = False
 
@@ -44,12 +45,11 @@ class FeatureCache:
         elif cached_num == self._num_nodes:
             self._full_cached = True
             if self._enable_uva:
-                torch.ops.pg_ops._CAPI_unpin_tensor(self._feature)
+                capi._CAPI_unpin_tensor(self._feature)
             self._cached_feature = self._feature.cuda()
         else:
             self._cached_feature = self._feature[:cached_num].cuda()
         mem_used = cached_num * item_size
-
         toc = time.time()
 
         self._hit_num = 0
@@ -71,13 +71,12 @@ class FeatureCache:
             return self._cached_feature[index]
         elif self._no_cached or not self.cache_built:
             if self._enable_uva:
-                return torch.ops.pg_ops._CAPI_fetch_feature_data(
-                    self._feature, index)
+                return capi._CAPI_fetch_feature_data(self._feature, index)
             else:
                 return self._feature[index]
         else:
             if self._enable_uva:
-                return torch.ops.pg_ops._CAPI_fetch_feature_data_with_caching(
+                return capi._CAPI_fetch_feature_data_with_caching(
                     self._feature,
                     self._cached_feature,
                     index,
@@ -95,4 +94,4 @@ class FeatureCache:
 
     def __del__(self):
         if self._enable_uva and not self._full_cached:
-            torch.ops.pg_ops._CAPI_unpin_tensor(self._feature)
+            capi._CAPI_unpin_tensor(self._feature)

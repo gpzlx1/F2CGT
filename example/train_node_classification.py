@@ -298,8 +298,8 @@ if __name__ == "__main__":
         default=8,
         help="the number of GPU device. Use -1 for CPU training",
     )
-    parser.add_argument("--num_epochs", type=int, default=20)
-    parser.add_argument("--num_hidden", type=int, default=16)
+    parser.add_argument("--num_epochs", type=int, default=5)
+    parser.add_argument("--num_hidden", type=int, default=64)
     parser.add_argument("--num_layers", type=int, default=3)
     parser.add_argument("--fan_out", type=str, default="5,10,15")
     parser.add_argument("--batch_size", type=int, default=1000)

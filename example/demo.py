@@ -1,6 +1,5 @@
 import torch
-import time
-from pagraph import FeatureCache
+from bifeat import FeatureCache
 
 if __name__ == "__main__":
     cpu_data = torch.arange(0, 10000).reshape(100, 100).float()

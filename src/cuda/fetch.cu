@@ -3,7 +3,7 @@
 
 #define BLOCK_SIZE 128
 
-namespace pg {
+namespace bifeat {
 
 template <typename IndexType, typename FloatType, int TILE_SIZE>
 __global__ void _FeatureFetchDataWithCachingKernel(
@@ -108,4 +108,4 @@ torch::Tensor FeatureFetchDataCUDA(torch::Tensor data, torch::Tensor nid) {
   return torch::Tensor();
 }
 
-}  // namespace pg
+}  // namespace bifeat
