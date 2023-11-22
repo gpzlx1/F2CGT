@@ -2,7 +2,6 @@ import argparse
 import time
 
 import numpy as np
-import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
@@ -27,7 +26,7 @@ def evaluate(model, g, inputs, labels, val_nid, test_nid, batch_size, device):
     device : The GPU device to evaluate on.
     """
     model.eval()
-    with th.no_grad():
+    with torch.no_grad():
         pred = model.inference(g, inputs, batch_size, device)
     model.train()
     return compute_acc(pred[val_nid],
@@ -194,8 +193,8 @@ def run(rank, world_size, data, args):
     avg_update_time = np.mean(update_time_log[2:])
 
     for i in range(args.num_gpus):
-        th.distributed.barrier()
-        if i == th.distributed.get_rank() % args.num_gpus:
+        torch.distributed.barrier()
+        if i == torch.distributed.get_rank() % args.num_gpus:
             timetable = ("=====================\n"
                          "Part {}, Avg Time:\n"
                          "Epoch Time(s): {:.4f}\n"
@@ -205,7 +204,7 @@ def run(rank, world_size, data, args):
                          "Backward Time(s): {:.4f}\n"
                          "Update Time(s): {:.4f}\n"
                          "=====================".format(
-                             th.distributed.get_rank(),
+                             torch.distributed.get_rank(),
                              avg_epoch_time,
                              avg_sample_time,
                              avg_load_time,
