@@ -20,6 +20,14 @@ def str2dtype(input: str):
         return torch.float64
     elif input == "bool":
         return torch.bool
+    elif input == "uint8":
+        return torch.uint8
+    elif input == "int8":
+        return torch.int8
+    elif input == "int16":
+        return torch.int16
+    elif input == "float16":
+        return torch.float16
 
 
 def dtype_sizeof(input):
@@ -32,7 +40,9 @@ def dtype_sizeof(input):
             return 4
         elif input == "float64":
             return 8
-        elif input == "bool":
+        elif input == "int16" or input == "float16":
+            return 2
+        elif input == "bool" or input == "uint8" or input == "int8":
             return 1
     else:
         if input == torch.int32:
@@ -43,7 +53,9 @@ def dtype_sizeof(input):
             return 4
         elif input == torch.float64:
             return 8
-        elif input == torch.bool:
+        elif input == torch.int16 or input == torch.float16:
+            return 2
+        elif input == torch.bool or input == torch.uint8 or input == torch.int8:
             return 1
 
 

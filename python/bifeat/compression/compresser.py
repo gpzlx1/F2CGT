@@ -136,6 +136,7 @@ class CompressionManager(object):
 
         part_size_list = []
 
+        # compute part size
         if num_train_idx > num_items * self.ratios[0]:
             part_size_list.append(num_train_idx)
             part_size_list.append(num_train_idx)
@@ -154,7 +155,7 @@ class CompressionManager(object):
                 part_size_list.append(part_size)
             part_size_list[-1] = num_items - sum(part_size_list[:-1])
 
-        print(part_size_list)
+        self.part_size_list = part_size_list
 
         # begin compress
         world_size = dist.get_world_size()
@@ -172,11 +173,11 @@ class CompressionManager(object):
                 end += part_size_list[j]
 
             if self.methods[i] == 'sq':
-                codebook, compressed_feature = sq_compress(
+                compressed_feature, codebook = sq_compress(
                     self.features[self.dst2src[begin:end]],
                     self.configs[i]['target_bits'], 'cuda')
             elif self.methods[i] == 'vq':
-                codebook, compressed_feature = vq_compress(
+                compressed_feature, codebook = vq_compress(
                     self.features[self.dst2src[begin:end]],
                     self.configs[i]['width'], self.configs[i]['length'],
                     'cuda')
@@ -186,8 +187,97 @@ class CompressionManager(object):
             codebooks.append(codebook)
             compressed_features.append(compressed_feature)
 
-        for i in codebooks:
-            print(i.shape)
+        # gather codebooks
+        self.codebooks = [None] * num_parts
+        self.compressed_features = [None] * num_parts
+        for i in range(num_parts):
+            ouput_codebooks = [None for _ in range(world_size)]
+            dist.all_gather_object(ouput_codebooks, codebooks[i])
+            full_codebooks = torch.cat(
+                [value.unsqueeze(0) for value in ouput_codebooks], dim=0)
+            self.codebooks[i] = full_codebooks
 
-        for i in compressed_features:
-            print(i.shape)
+        # gather feature
+        roots = [
+            i for i in range(world_size)
+            if i % dist.get_world_size(self.shm_manager._local_group) == 0
+        ]
+
+        for root in roots:
+            for j in range(num_parts):
+                if rank == root:
+                    ouput_features = [None for _ in range(world_size)]
+                    dist.gather_object(compressed_features[j], ouput_features,
+                                       root)
+                    full_features = torch.cat(ouput_features, dim=0)
+                    self.compressed_features[j] = full_features
+
+                else:
+                    dist.gather_object(compressed_features[j], None, root)
+
+        # create shm features for local group
+        if self.shm_manager._is_chief:
+            for i in range(num_parts):
+                compressed_feature = self.compressed_features[i]
+                shm_compress_feature = self.shm_manager.create_shm_tensor(
+                    self.shm_manager.dataset_name + "_shm_compress_feature_" +
+                    str(i), compressed_feature.dtype, compressed_feature.shape)
+                shm_compress_feature.copy_(compressed_feature)
+                self.compressed_features[i] = shm_compress_feature
+
+        if not self.shm_manager._is_chief:
+            for i in range(num_parts):
+                shm_compress_feature = self.shm_manager.create_shm_tensor(
+                    self.shm_manager.dataset_name + "_shm_compress_feature_" +
+                    str(i), None, None)
+                self.compressed_features[i] = shm_compress_feature
+
+        # compute compressed size and compression ratio
+        if self.shm_manager._is_chief:
+            self.compressed_size = 0
+            for i in range(num_parts):
+                self.compressed_size += self.compressed_features[i].numel(
+                ) * self.compressed_features[i].element_size()
+
+            print(
+                "compressed size: {:.3f} GB, compression ratio: {:.1f}".format(
+                    self.compressed_size / 1024 / 1024 / 1024,
+                    self.original_size / self.compressed_size))
+
+        # compute partition_range
+        self.part_size_list = torch.tensor(self.part_size_list).long()
+        self.partition_range = torch.zeros(num_parts + 1, dtype=torch.long)
+        self.partition_range[1:] = torch.cumsum(self.part_size_list, dim=0)
+        self.chunk_size = (self.part_size_list + world_size - 1) // world_size
+
+    def decompress(self, idx):
+        output_tensor = torch.empty((idx.numel(), self.features.shape[1]),
+                                    dtype=self.features.dtype,
+                                    device='cuda')
+        part_indices = torch.searchsorted(
+            self.partition_range, idx, right=True) - 1
+        local_part_indices = idx - self.partition_range[part_indices]
+        local_codebook_indices = local_part_indices // self.chunk_size[
+            part_indices]
+        self.feat_dim = self.features.shape[1]
+
+        for i in range(idx.numel()):
+            part_index = part_indices[i]
+            local_part_index = local_part_indices[i]
+            local_codebook_index = local_codebook_indices[i]
+
+            if self.methods[part_index] == 'sq':
+                decompressed_feature = sq_decompress(
+                    self.compressed_features[part_index][local_part_index],
+                    self.feat_dim,
+                    self.codebooks[part_index][local_codebook_index],
+                )
+            elif self.methods[part_index] == 'vq':
+                decompressed_feature = vq_decompress(
+                    self.compressed_features[part_index]
+                    [local_part_index].squeeze(0), self.feat_dim,
+                    self.codebooks[part_index][local_codebook_index])
+
+            output_tensor[i] = decompressed_feature
+
+        return output_tensor

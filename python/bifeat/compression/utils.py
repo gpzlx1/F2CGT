@@ -97,6 +97,7 @@ def sq_compress(tensor, target_bits, device):
 
 def sq_decompress(compressed_tensor, feat_dim, codebook):
     emin, emax, mean, drange, target_bits = codebook
+    drange = drange.item()
 
     exp = compressed_tensor
     if target_bits < 8:
