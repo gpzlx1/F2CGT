@@ -4,12 +4,11 @@
 #include <torch/script.h>
 
 namespace pg {
-std::tuple<torch::Tensor, torch::Tensor> CreateHashMapTensorCUDA(
-    torch::Tensor cache_nids);
 
-torch::Tensor FeatureFetchDataWithCachingCUDA(
-    torch::Tensor cpu_data, torch::Tensor gpu_data, torch::Tensor nid,
-    torch::Tensor hashed_key_tensor, torch::Tensor hashed_value_tensor);
+torch::Tensor FeatureFetchDataWithCachingCUDA(torch::Tensor cpu_data,
+                                              torch::Tensor gpu_data,
+                                              torch::Tensor nid,
+                                              int64_t cached_num);
 
 torch::Tensor FeatureFetchDataCUDA(torch::Tensor data, torch::Tensor nid);
 

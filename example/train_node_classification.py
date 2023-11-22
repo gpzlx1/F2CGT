@@ -11,7 +11,7 @@ from models import SAGE, compute_acc
 import torch.distributed as dist
 import torch
 from pagraph import FeatureCache
-from load_graph import load_ogb, load_reddit
+from load_dataset import load_dataset
 
 torch.manual_seed(25)
 
@@ -35,43 +35,6 @@ def evaluate(model, g, inputs, labels, val_nid, test_nid, batch_size, device):
                                                      labels[test_nid])
 
 
-def presampling(g, dataloader, train_data, num_epochs=1):
-    presampling_heat = torch.zeros((g.num_nodes(), ), dtype=torch.float32)
-    model, loss_fcn, optimizer = train_data
-    tic = time.time()
-    for epoch in range(num_epochs):
-        with model.join():
-            # run some epochs to count presampling heat and max allocated cuda memory
-            for step, (input_nodes, seeds, blocks) in enumerate(dataloader):
-                input_nodes = input_nodes.cpu()
-                presampling_heat[input_nodes] += 1
-                batch_inputs = g.ndata["features"][input_nodes].to("cuda")
-                batch_labels = blocks[-1].dstdata["labels"]
-                batch_labels = batch_labels.long()
-                batch_pred = model(blocks, batch_inputs)
-                loss = loss_fcn(batch_pred, batch_labels)
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-    toc = time.time()
-
-    presampling_heat_accessed = presampling_heat[presampling_heat > 0]
-    mem_used = torch.cuda.max_memory_allocated()
-    info = "========================================\n"
-    info += "Rank {} presampling info:\n".format(torch.cuda.current_device())
-    info += "Presampling done, max: {:.3f} min: {:.3f} avg: {:.3f}\n".format(
-        torch.max(presampling_heat_accessed).item(),
-        torch.min(presampling_heat_accessed).item(),
-        torch.mean(presampling_heat_accessed).item())
-    info += "Max allocated cuda mem: {:.3f} GB\n".format(mem_used / 1024 /
-                                                         1024 / 1024)
-    info += "Presampling time: {:.3f} s\n".format(toc - tic)
-    info += "========================================"
-    print(info)
-
-    return presampling_heat, mem_used
-
-
 def run(rank, world_size, data, args):
     torch.cuda.set_device(rank)
     device = torch.device("cuda")
@@ -80,7 +43,7 @@ def run(rank, world_size, data, args):
                             world_size=world_size,
                             rank=rank)
     # Unpack data
-    train_nid, val_nid, test_nid, n_classes, g = data
+    train_nid, val_nid, test_nid, n_classes, g, features = data
     shuffle = True
     sampler = dgl.dataloading.NeighborSampler(
         [int(fanout) for fanout in args.fan_out.split(",")],
@@ -97,7 +60,7 @@ def run(rank, world_size, data, args):
                                             use_ddp=True,
                                             use_uva=True)
     # Define model and optimizer
-    model = SAGE(g.ndata["features"].shape[1], args.num_hidden, n_classes,
+    model = SAGE(features.shape[1], args.num_hidden, n_classes,
                  args.num_layers, F.relu, args.dropout)
     model = model.to(device)
     model = nn.parallel.DistributedDataParallel(model,
@@ -107,15 +70,7 @@ def run(rank, world_size, data, args):
     loss_fcn = loss_fcn.to(device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
-    presampling_heat, cuda_mem_used = presampling(g, dataloader,
-                                                  (model, loss_fcn, optimizer))
-    reserved_mem = 1.0 * 1024 * 1024 * 1024
-    gpu_capacity = int(
-        torch.cuda.mem_get_info(torch.cuda.current_device())[1] -
-        cuda_mem_used - reserved_mem)
-    features = g.ndata.pop("features")
     feature_cache = FeatureCache(features)
-    feature_cache.create_cache(gpu_capacity, presampling_heat)
 
     iter_tput = []
     epoch_time_log = []
@@ -137,8 +92,6 @@ def run(rank, world_size, data, args):
         num_inputs = 0
 
         with model.join():
-            # Loop over the dataloader to sample the computation dependency
-            # graph as a list of blocks.
             step_time = []
             if args.breakdown:
                 dist.barrier()
@@ -189,6 +142,15 @@ def run(rank, world_size, data, args):
                 step_time.append(step_t)
                 iter_tput.append(len(blocks[-1].dstdata[dgl.NID]) / step_t)
                 tic_step = time.time()
+
+                if not feature_cache.cache_built:
+                    reserved_mem = 1.0 * 1024 * 1024 * 1024
+                    feature_cache.create_cache(
+                        int(
+                            torch.cuda.mem_get_info(
+                                torch.cuda.current_device())[1] -
+                            torch.torch.cuda.max_memory_allocated() -
+                            reserved_mem))
 
         toc = time.time()
         epoch += 1
@@ -303,22 +265,24 @@ def run(rank, world_size, data, args):
 
 
 def main(args):
-    g, num_classes = load_ogb(args.dataset, args.root)
-    g = g.formats('csc')
-    g.create_formats_()
+    g, metadata = load_dataset(args.root, args.dataset)
+    num_classes = metadata["num_classes"]
+    dgl_g = dgl.graph(("csc", (g["indptr"], g["indices"], torch.tensor([]))))
+    dgl_g.ndata["labels"] = g["labels"].contiguous()
+
     if args.seeds_rate > 0:
-        num_nodes = g.num_nodes()
+        num_nodes = dgl_g.num_nodes()
         num_train = int(num_nodes * args.seeds_rate)
         train_nid = torch.randperm(num_nodes)[:num_train]
     else:
-        train_nid = g.ndata["train_mask"].nonzero().flatten()
-    val_nid = g.ndata["val_mask"].nonzero().flatten()
-    test_nid = g.ndata["test_mask"].nonzero().flatten()
+        train_nid = g["train_idx"]
+    val_nid = g["val_idx"]
+    test_nid = g["test_idx"]
     print("Train: {} | Val: {} | Test: {}".format(train_nid.numel(),
                                                   val_nid.numel(),
                                                   test_nid.numel()))
 
-    data = train_nid, val_nid, test_nid, num_classes, g
+    data = train_nid, val_nid, test_nid, num_classes, dgl_g, g["features"]
     import torch.multiprocessing as mp
     mp.spawn(run, args=(args.num_gpus, data, args), nprocs=args.num_gpus)
 
