@@ -16,7 +16,8 @@ def graph_reorder(path, hotness, save_path):
 
     meta_data = torch.load(os.path.join(path, "metadata.pt"))
 
-    csc_g = dgl.graph(("csc", (indptr, indices, torch.tensor([]))))
+    csc_g = dgl.graph(("csc", (indptr, indices, torch.tensor([]))),
+                      num_nodes=meta_data["num_nodes"])
     coo_g = csc_g.formats("coo")
     coo_g.create_formats_()
     coo_row, coo_col = coo_g.adj_tensors("coo")
@@ -31,7 +32,9 @@ def graph_reorder(path, hotness, save_path):
     coo_sort_idx = torch.argsort(reorder_row)
     reorder_row = reorder_row[coo_sort_idx]
     reorder_col = reorder_col[coo_sort_idx]
-    coo_g = dgl.graph(("coo", (reorder_row, reorder_col)))
+    coo_g = dgl.graph(("coo", (reorder_row, reorder_col)),
+                      num_nodes=meta_data["num_nodes"],
+                      row_sorted=True)
     csc_g = coo_g.formats("csc")
     csc_g.create_formats_()
     reorder_indptr, reorder_indices, _ = csc_g.adj_tensors("csc")
