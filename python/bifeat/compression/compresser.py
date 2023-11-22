@@ -2,13 +2,27 @@ import torch
 import dgl
 import BiFeatLib as capi
 import torch.distributed as dist
+import math
 from ..shm import ShmManager
+from .utils import sq_compress, vq_compress, sq_decompress, vq_decompress
 
 
 class CompressionManager(object):
 
     def __init__(self, ratios, methods, configs, cache_path,
                  shm_manager: ShmManager):
+        assert len(ratios) == len(methods)
+        assert len(ratios) == len(configs)
+        assert sum(ratios) == 1.0
+        for method, config in zip(methods, configs):
+            if method == 'sq':
+                assert 'target_bits' in config
+            elif method == 'vq':
+                assert 'length' in config
+                assert 'width' in config
+            else:
+                raise ValueError
+
         self.ratios = ratios
         self.methods = methods
         self.configs = configs
@@ -114,3 +128,66 @@ class CompressionManager(object):
                                    group=self.shm_manager._local_group)
         self.dst2src = package[0]
         self.hotness = package[1]
+
+    def compress(self):
+        num_train_idx = self.train_seeds.numel()
+        num_parts = len(self.ratios)
+        num_items = self.features.shape[0]
+
+        part_size_list = []
+
+        if num_train_idx > num_items * self.ratios[0]:
+            part_size_list.append(num_train_idx)
+            part_size_list.append(num_train_idx)
+
+            new_ratios = self.ratios[1:]
+            new_ratios = new_ratios / sum(new_ratios)
+
+            for i in range(num_parts - 1):
+                part_size = int(num_items * new_ratios[i])
+                part_size_list.append(part_size)
+            part_size_list[-1] = num_items - sum(part_size_list[:-1])
+
+        else:
+            for i in range(num_parts):
+                part_size = int(num_items * self.ratios[i])
+                part_size_list.append(part_size)
+            part_size_list[-1] = num_items - sum(part_size_list[:-1])
+
+        print(part_size_list)
+
+        # begin compress
+        world_size = dist.get_world_size()
+        rank = dist.get_rank()
+        codebooks = []
+        compressed_features = []
+        for i in range(num_parts):
+            features_size = part_size_list[i]
+            each_gpu_size = (features_size + world_size - 1) // world_size
+            begin = rank * each_gpu_size
+            end = (rank + 1) * each_gpu_size
+
+            for j in range(i):
+                begin += part_size_list[j]
+                end += part_size_list[j]
+
+            if self.methods[i] == 'sq':
+                codebook, compressed_feature = sq_compress(
+                    self.features[self.dst2src[begin:end]],
+                    self.configs[i]['target_bits'], 'cuda')
+            elif self.methods[i] == 'vq':
+                codebook, compressed_feature = vq_compress(
+                    self.features[self.dst2src[begin:end]],
+                    self.configs[i]['width'], self.configs[i]['length'],
+                    'cuda')
+            else:
+                raise ValueError
+
+            codebooks.append(codebook)
+            compressed_features.append(compressed_feature)
+
+        for i in codebooks:
+            print(i.shape)
+
+        for i in compressed_features:
+            print(i.shape)

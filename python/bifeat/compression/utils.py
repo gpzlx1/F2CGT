@@ -54,8 +54,6 @@ def sq_compress(tensor, target_bits, device):
     fmin = fmin.to(device)
     fmax = fmax.to(device)
 
-    print("scalar codebook: {}".format(codebook))
-
     print("start scalar compressing, precision={}, fmin={}, fmax={}".format(
         target_bits, fmin, fmax))
 

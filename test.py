@@ -33,10 +33,16 @@ def main(num_gpus=2):
     torch.cuda.synchronize()
     print("Load dataset time: {}".format(time.time() - begin))
 
-    print(graph_tensors['indptr'])
-
-    compression_manager = bifeat.CompressionManager(None, None, None, None,
-                                                    shm_manager)
+    compression_manager = bifeat.CompressionManager(ratios=[0.1, 0.9],
+                                                    methods=['sq', 'vq'],
+                                                    configs=[{
+                                                        'target_bits': 4
+                                                    }, {
+                                                        'width': 32,
+                                                        'length': 256
+                                                    }],
+                                                    cache_path='./cache',
+                                                    shm_manager=shm_manager)
     compression_manager.register(
         graph_tensors['indptr'],
         graph_tensors['indices'],
@@ -46,7 +52,7 @@ def main(num_gpus=2):
     )
 
     begin = time.time()
-    compression_manager.presampling([10, 10])
+    compression_manager.presampling([25, 10])
     torch.cuda.synchronize()
     print("presampling time: {}".format(time.time() - begin))
 
