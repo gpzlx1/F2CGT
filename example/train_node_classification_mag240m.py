@@ -91,7 +91,7 @@ def run(rank, world_size, data, args):
         shape=(num_nodes, num_features),
     )
 
-    train_nid = train_nid.long() + paper_offset
+    train_nid = train_nid + paper_offset
     shuffle = True
     sampler = dgl.dataloading.NeighborSampler(
         [int(fanout) for fanout in args.fan_out.split(",")])
@@ -101,7 +101,7 @@ def run(rank, world_size, data, args):
         train_collator.dataset,
         num_replicas=world_size,
         rank=rank,
-        shuffle=True,
+        shuffle=shuffle,
         drop_last=False,
     )
     dataloader = torch.utils.data.DataLoader(
@@ -110,7 +110,6 @@ def run(rank, world_size, data, args):
         collate_fn=train_collator.collate,
         num_workers=4,
         sampler=train_sampler,
-        shuffle=shuffle,
     )
     # Define model and optimizer
     model = SAGE(features.shape[1], args.num_hidden, n_classes,
@@ -122,13 +121,6 @@ def run(rank, world_size, data, args):
     loss_fcn = nn.CrossEntropyLoss()
     loss_fcn = loss_fcn.to(device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
-
-    # presampling_heat, cuda_mem_used = presampling(g, dataloader,
-    #                                               (model, loss_fcn, optimizer))
-    # reserved_mem = 1.0 * 1024 * 1024 * 1024
-    # gpu_capacity = int(
-    #     torch.cuda.mem_get_info(torch.cuda.current_device())[1] -
-    #     cuda_mem_used - reserved_mem)
 
     iter_tput = []
     epoch_time_log = []
@@ -202,6 +194,27 @@ def run(rank, world_size, data, args):
                 step_time.append(step_t)
                 iter_tput.append(len(blocks[-1].dstdata[dgl.NID]) / step_t)
                 tic_step = time.time()
+
+                timetable = ("=====================\n"
+                             "Part {}\n"
+                             "Sampling Time(s): {:.4f}\n"
+                             "Loading Time(s): {:.4f}\n"
+                             "Forward Time(s): {:.4f}\n"
+                             "Backward Time(s): {:.4f}\n"
+                             "Update Time(s): {:.4f}\n"
+                             "#seeds: {}\n"
+                             "#inputs: {}\n"
+                             "=====================".format(
+                                 dist.get_rank(),
+                                 sample_time,
+                                 load_time,
+                                 forward_time,
+                                 backward_time,
+                                 update_time,
+                                 num_seeds,
+                                 num_inputs,
+                             ))
+                print(timetable)
 
         toc = time.time()
         epoch += 1
@@ -322,7 +335,7 @@ def main(args):
         num_nodes = g.num_nodes()
         num_train = int(num_nodes * args.seeds_rate)
         train_nid = torch.randperm(num_nodes)[:num_train]
-    print("Train: {}".format(train_nid.numel()))
+    print("Train: {}".format(train_nid.shape[0]))
     data = g, paper_labels, train_nid, num_classes, paper_offset
     import torch.multiprocessing as mp
     mp.spawn(run, args=(args.num_gpus, data, args), nprocs=args.num_gpus)
