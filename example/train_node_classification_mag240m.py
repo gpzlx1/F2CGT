@@ -18,6 +18,7 @@ torch.manual_seed(25)
 
 
 class ExternalNodeCollator(dgl.dataloading.NodeCollator):
+
     def __init__(self, g, idx, sampler, offset, feats, label):
         super().__init__(g, idx, sampler)
         self.offset = offset
@@ -27,30 +28,11 @@ class ExternalNodeCollator(dgl.dataloading.NodeCollator):
     def collate(self, items):
         input_nodes, output_nodes, mfgs = super().collate(items)
         # Copy input features
-        mfgs[0].srcdata["features"] = torch.FloatTensor(self.feats[input_nodes])
-        mfgs[-1].dstdata["labels"] = torch.LongTensor(
-            self.label[output_nodes - self.offset]
-        )
+        mfgs[0].srcdata["features"] = torch.FloatTensor(
+            self.feats[input_nodes])
+        mfgs[-1].dstdata["labels"] = torch.LongTensor(self.label[output_nodes -
+                                                                 self.offset])
         return input_nodes, output_nodes, mfgs
-
-
-def evaluate(model, g, inputs, labels, val_nid, test_nid, batch_size, device):
-    """
-    Evaluate the model on the validation set specified by ``val_nid``.
-    g : The entire graph.
-    inputs : The features of all the nodes.
-    labels : The labels of all the nodes.
-    val_nid : the node Ids for validation.
-    batch_size : Number of nodes to compute at the same time.
-    device : The GPU device to evaluate on.
-    """
-    model.eval()
-    with th.no_grad():
-        pred = model.inference(g, inputs, batch_size, device)
-    model.train()
-    return compute_acc(pred[val_nid],
-                       labels[val_nid]), compute_acc(pred[test_nid],
-                                                     labels[test_nid])
 
 
 def presampling(g, dataloader, train_data, num_epochs=1):
@@ -98,15 +80,23 @@ def run(rank, world_size, data, args):
                             world_size=world_size,
                             rank=rank)
     # Unpack data
-    g, features, paper_labels, train_nid, n_classes, paper_offset = data
+    g, paper_labels, train_nid, n_classes, paper_offset = data
+
+    num_nodes = 244160499
+    num_features = 768
+    features = np.memmap(
+        os.path.join(args.root, "full.npy"),
+        mode="r",
+        dtype="float16",
+        shape=(num_nodes, num_features),
+    )
+
     train_nid = train_nid.long() + paper_offset
     shuffle = True
     sampler = dgl.dataloading.NeighborSampler(
-        [int(fanout) for fanout in args.fan_out.split(",")]
-    )
-    train_collator = ExternalNodeCollator(
-        g, train_nid, sampler, paper_offset, features, paper_labels
-    )
+        [int(fanout) for fanout in args.fan_out.split(",")])
+    train_collator = ExternalNodeCollator(g, train_nid, sampler, paper_offset,
+                                          features, paper_labels)
     train_sampler = torch.utils.data.distributed.DistributedSampler(
         train_collator.dataset,
         num_replicas=world_size,
@@ -120,9 +110,10 @@ def run(rank, world_size, data, args):
         collate_fn=train_collator.collate,
         num_workers=4,
         sampler=train_sampler,
+        shuffle=shuffle,
     )
     # Define model and optimizer
-    model = SAGE(g.ndata["features"].shape[1], args.num_hidden, n_classes,
+    model = SAGE(features.shape[1], args.num_hidden, n_classes,
                  args.num_layers, F.relu, args.dropout)
     model = model.to(device)
     model = nn.parallel.DistributedDataParallel(model,
@@ -132,15 +123,12 @@ def run(rank, world_size, data, args):
     loss_fcn = loss_fcn.to(device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
-    presampling_heat, cuda_mem_used = presampling(g, dataloader,
-                                                  (model, loss_fcn, optimizer))
-    reserved_mem = 1.0 * 1024 * 1024 * 1024
-    gpu_capacity = int(
-        torch.cuda.mem_get_info(torch.cuda.current_device())[1] -
-        cuda_mem_used - reserved_mem)
-    features = g.ndata.pop("features")
-    feature_cache = FeatureCache(features)
-    feature_cache.create_cache(gpu_capacity, presampling_heat)
+    # presampling_heat, cuda_mem_used = presampling(g, dataloader,
+    #                                               (model, loss_fcn, optimizer))
+    # reserved_mem = 1.0 * 1024 * 1024 * 1024
+    # gpu_capacity = int(
+    #     torch.cuda.mem_get_info(torch.cuda.current_device())[1] -
+    #     cuda_mem_used - reserved_mem)
 
     iter_tput = []
     epoch_time_log = []
@@ -328,13 +316,14 @@ def run(rank, world_size, data, args):
 
 
 def main(args):
-    g, features, paper_labels, train_nid, num_classes, paper_offset = load_mag240m(args.root)
+    g, paper_labels, train_nid, num_classes, paper_offset = load_mag240m(
+        args.root)
     if args.seeds_rate > 0:
         num_nodes = g.num_nodes()
         num_train = int(num_nodes * args.seeds_rate)
         train_nid = torch.randperm(num_nodes)[:num_train]
     print("Train: {}".format(train_nid.numel()))
-    data = g, features, paper_labels, train_nid, num_classes, paper_offset
+    data = g, paper_labels, train_nid, num_classes, paper_offset
     import torch.multiprocessing as mp
     mp.spawn(run, args=(args.num_gpus, data, args), nprocs=args.num_gpus)
 

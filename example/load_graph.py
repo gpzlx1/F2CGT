@@ -91,20 +91,14 @@ def load_mag240m(root):
     paper_offset = 122408833
     num_nodes = 244160499
     num_features = 768
-    features = np.memmap(
-        os.path.join(root, "full.npy"),
-        mode="r",
-        dtype="float16",
-        shape=(num_nodes, num_features),
-    )
-    (g,), _ = dgl.load_graphs(os.path.join(root, "graph.dgl"))
+    (g, ), _ = dgl.load_graphs(os.path.join(root, "graph.dgl"))
     g = g.formats(["csc"])
     g.create_formats_()
     num_classes = 153
-    paper_labels = th.randint(0, num_classes, (num_nodes - paper_offset, )).long()
+    paper_labels = th.randint(0, num_classes,
+                              (num_nodes - paper_offset, )).long()
     train_idx = th.load(os.path.join(root, "train_idx.pt"))
-    return g, features, paper_labels, train_idx, num_classes, paper_offset
-
+    return g, paper_labels, train_idx, num_classes, paper_offset
 
 
 def inductive_split(g):
