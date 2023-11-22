@@ -1,3 +1,3 @@
-from .compresser import Compresser
+from .compresser import *
 from .packbits import packbits, unpackbits
 from .utils import sq_compress, sq_decompress, vq_compress, vq_decompress

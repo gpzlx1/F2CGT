@@ -3,7 +3,6 @@ import math
 import numpy as np
 import tqdm
 from .packbits import packbits, unpackbits
-from .kmeans import get_centers, kmeans_predict
 from cuml import KMeans
 
 
