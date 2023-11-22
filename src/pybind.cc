@@ -31,5 +31,9 @@ PYBIND11_MODULE(BiFeatLib, m) {
            &FeatureFetchDataWithCachingCUDA, py::arg("cpu_data"),
            py::arg("gpu_data"), py::arg("hashed_key_tensor"),
            py::arg("hashed_value_tensor"), py::arg("nid"));
+
+  m.def("_CAPI_vq_decompress", &vq_decompress, py::arg("codebook_indices"),
+        py::arg("compressed_features"), py::arg("codebooks"),
+        py::arg("feat_dim"));
   // .def("_CAPI_meanaggr", & meanaggr);
 }

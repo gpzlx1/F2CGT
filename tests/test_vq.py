@@ -1,6 +1,7 @@
 import torch
 from bifeat import vq_compress, vq_decompress
 import time
+import BiFeatLib
 
 torch.manual_seed(42)
 
@@ -58,6 +59,21 @@ for i in range(2):
     begin = time.time()
     decompress_features = vq_decompress(compressed_features, FEAT_DIM,
                                         codebook)
+    torch.cuda.synchronize()
+    end = time.time()
+    print("Time: {}".format((end - begin) * 1000))
+
+compressed_features = compressed_features.cuda()
+codebook_indices = torch.zeros(compressed_features.shape[0],
+                               dtype=torch.long,
+                               device='cuda')
+codebooks = codebook.unsqueeze(0).cuda()
+for i in range(2):
+    print()
+    print()
+    begin = time.time()
+    decompress_features2 = BiFeatLib._CAPI_vq_decompress(
+        codebook_indices, compressed_features, codebooks, FEAT_DIM)
     torch.cuda.synchronize()
     end = time.time()
     print("Time: {}".format((end - begin) * 1000))
