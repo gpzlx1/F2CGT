@@ -1,7 +1,7 @@
 #include <pybind11/pybind11.h>
 #include <torch/script.h>
+#include "cpu/omp.h"
 #include "cuda/cuda_ops.h"
-// #include "packbits.h"
 #include "pin_memory.h"
 #include "shm/shared_memory.h"
 
@@ -17,7 +17,10 @@ PYBIND11_MODULE(BiFeatLib, m) {
            py::arg("size"), py::arg("ptr"), py::arg("fd"),
            py::arg("pin_memory") = true)
       .def("open_shared_tensor", &shm::open_shared_tensor, py::arg("ptr"),
-           py::arg("dtype"), py::arg("shape"));
+           py::arg("dtype"), py::arg("shape"))
+      .def("omp_reorder_indices", &cpu::omp_reorder_indices, py::arg("indptr"),
+           py::arg("indices"), py::arg("new_indptr"), py::arg("new_indices"),
+           py::arg("dst2src"));
 
   m.def("_CAPI_create_hashmap", &CreateHashMapTensorCUDA, py::arg("cache_nids"))
       .def("_CAPI_pin_tensor", &TensorPinMemory, py::arg("data"))
