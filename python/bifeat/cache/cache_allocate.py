@@ -1,9 +1,57 @@
 import torch
 from ..shm import dtype_sizeof
+from .adj_cache import StructureCacheServer
+from ..dataloading import SeedGenerator
+import time
+import numpy as np
 
 
-def compute_adj_slope():
-    pass
+def compute_adj_slope(indptr,
+                      indices,
+                      seeds,
+                      fan_out,
+                      batch_size,
+                      step=0.1,
+                      num_epochs=5):
+    seeds_loader = SeedGenerator(seeds, batch_size, shuffle=True)
+    cache_rate = 0
+    num_nodes = indptr.shape[0] - 1
+    nids = torch.arange(num_nodes).long()
+
+    # warmup
+    cached_nids = torch.tensor([])
+    sampler = StructureCacheServer(indptr, indices, fan_out)
+    sampler.cache_data(cached_nids)
+    for it, seeds in enumerate(seeds_loader):
+        _ = sampler.sample_neighbors(seeds)
+
+    stats = []
+    for i in range(num_epochs):
+        sampler.clear_cache()
+        torch.cuda.empty_cache()
+        cache_num = int(num_nodes * cache_rate)
+        cached_nids = nids[:cache_num]
+        try:
+            sampler.cache_data(cached_nids)
+            torch.cuda.synchronize()
+            tic = time.time()
+            for it, seeds in enumerate(seeds_loader):
+                _ = sampler.sample_neighbors(seeds, count_hit=True)
+            torch.cuda.synchronize()
+            toc = time.time()
+            epoch_time = toc - tic
+        except:
+            break
+        cache_rate += step
+        print(
+            "Cache rate: {:.3f}, cached num: {}, hit times: {}, epoch time(s): {:.3f}"
+            .format(cache_rate, cache_num,
+                    sampler.get_hit_rates()[1], epoch_time))
+        stats.append((sampler.get_hit_rates()[1], epoch_time * 1000000))
+    sampler.clear_cache()
+    torch.cuda.empty_cache()
+    stats = np.array(stats)
+    return -np.polyfit(stats[:, 0], stats[:, 1], 1)[0]
 
 
 def compute_feat_slope():

@@ -388,7 +388,7 @@ def process_friendster(dataset_path, save_path):
     print("Save data...")
     torch.save(indptr.long(), os.path.join(save_path, "indptr.pt"))
     torch.save(indices.long(), os.path.join(save_path, "indices.pt"))
-    torch.save(train_idx, os.path.join(save_path, "train_idx.pt"))
+    torch.save(train_idx.long(), os.path.join(save_path, "train_idx.pt"))
     torch.save(meta_data, os.path.join(save_path, "metadata.pt"))
 
 

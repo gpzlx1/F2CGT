@@ -27,6 +27,9 @@ std::tuple<torch::Tensor, std::vector<torch::Tensor>> TensorRelabelCUDA(
 torch::Tensor GetSubIndptr(torch::Tensor nids, torch::Tensor indptr);
 torch::Tensor GetSubEdgeData(torch::Tensor nids, torch::Tensor indptr,
                              torch::Tensor sub_indptr, torch::Tensor edge_data);
+int64_t CountCachedNidsNum(torch::Tensor input_nids,
+                           torch::Tensor hashed_orig_nids,
+                           torch::Tensor hashed_device_nids);
 
 void meanaggr(torch::Tensor &output, const torch::Tensor &input,
               const torch::Tensor &src, const torch::Tensor &dst, int64_t dim,

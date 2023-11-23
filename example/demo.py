@@ -1,6 +1,6 @@
 import torch
 import time
-from bifeat import FeatureCacheServer
+from bifeat.cache import FeatureCacheServer
 
 if __name__ == "__main__":
 

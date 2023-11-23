@@ -6,7 +6,7 @@ import BiFeatLib as capi
 
 class StructureCacheServer:
 
-    def __init__(self, indptr, indices):
+    def __init__(self, indptr, indices, fan_out):
         self.indptr = indptr
         self.indices = indices
         capi._CAPI_pin_tensor(indptr)
@@ -22,6 +22,8 @@ class StructureCacheServer:
 
         self.full_cached = False
         self.no_cache = False
+
+        self._fan_out = fan_out
 
         self.access_times = 0
         self.hit_times = 0
@@ -80,22 +82,55 @@ class StructureCacheServer:
                   indices_cached_size /
                   (self.indices.element_size() * self.indices.numel())))
 
-    def sample_neighbors(self, seeds_nids, fan_out, replace=False):
+    def clear_cache(self):
+        self.cached_indptr = None
+        self.cached_indices = None
+
+        self.cached_nids_hashed = None
+        self.cached_nids_in_gpu_hashed = None
+
+        self.full_cached = False
+        self.no_cache = False
+
+        self.access_times = 0
+        self.hit_times = 0
+
+    def get_hit_rates(self):
+        if self.access_times == 0:
+            return (0, 0, 0.0)
+        else:
+            return (
+                self.access_times,
+                self.hit_times,
+                self.hit_times / self.access_times,
+            )
+
+    def sample_neighbors(self, seeds_nids, replace=False, count_hit=False):
         seeds = seeds_nids.cuda(self.device_id)
         blocks = []
 
-        for num_picks in reversed(fan_out):
+        for num_picks in reversed(self._fan_out):
 
             if self.full_cached:
+                if count_hit:
+                    self.access_times += seeds_nids.shape[0]
+                    self.hit_times += seeds_nids.shape[0]
                 coo_row, coo_col = capi._CAPI_cuda_sample_neighbors(
                     seeds, self.cached_indptr, self.cached_indices, num_picks,
                     replace)
 
             elif self.no_cache:
+                if count_hit:
+                    self.access_times += seeds_nids.shape[0]
                 coo_row, coo_col = capi._CAPI_cuda_sample_neighbors(
                     seeds, self.indptr, self.indices, num_picks, replace)
 
             else:
+                if count_hit:
+                    self.access_times += seeds_nids.shape[0]
+                    self.hit_times += capi._CAPI_count_cached_nids(
+                        seeds_nids, self.cached_nids_hashed,
+                        self.cached_nids_in_gpu_hashed)
                 coo_row, coo_col = capi._CAPI_cuda_sample_neighbors_with_caching(
                     seeds, self.cached_indptr, self.indptr,
                     self.cached_indices, self.indices, self.cached_nids_hashed,

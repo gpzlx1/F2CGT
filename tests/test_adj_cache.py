@@ -3,7 +3,7 @@ import dgl
 from ogb import nodeproppred
 import time
 import numpy as np
-from bifeat import StructureCacheServer
+from bifeat.cache import StructureCacheServer
 
 torch.manual_seed(1)
 

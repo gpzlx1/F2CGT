@@ -44,6 +44,9 @@ PYBIND11_MODULE(BiFeatLib, m) {
       .def("_CAPI_get_sub_indptr", &GetSubIndptr, py::arg("nids"),
            py::arg("indptr"))
       .def("_CAPI_get_sub_edge_data", &GetSubEdgeData, py::arg("nids"),
-           py::arg("indptr"), py::arg("sub_indptr"), py::arg("edge_data"));
+           py::arg("indptr"), py::arg("sub_indptr"), py::arg("edge_data"))
+      .def("_CAPI_count_cached_nids", &CountCachedNidsNum,
+           py::arg("input_nids"), py::arg("hashed_orig_nids"),
+           py::arg("hashed_device_nids"));
   // .def("_CAPI_meanaggr", & meanaggr);
 }

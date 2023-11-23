@@ -127,6 +127,28 @@ inline __device__ uint32_t AtomicCAS(uint32_t *const address,
   return atomicCAS(reinterpret_cast<Type *>(address),
                    static_cast<Type>(compare), static_cast<Type>(val));
 }
+
+inline __device__ int32_t AtomicAdd(int32_t *const address, const int32_t val) {
+  using Type = int;  // NOLINT
+
+  static_assert(sizeof(Type) == sizeof(*address), "Type width must match");
+  return atomicAdd(reinterpret_cast<Type *>(address), static_cast<Type>(val));
+}
+
+inline __device__ int64_t AtomicAdd(int64_t *const address, const int64_t val) {
+  using Type = unsigned long long int;  // NOLINT
+
+  static_assert(sizeof(Type) == sizeof(*address), "Type width must match");
+  return atomicAdd(reinterpret_cast<Type *>(address), static_cast<Type>(val));
+}
+
+inline __device__ float AtomicAdd(float *const address, const float val) {
+  using Type = float;  // NOLINT
+
+  static_assert(sizeof(Type) == sizeof(*address), "Type width must match");
+  return atomicAdd(reinterpret_cast<Type *>(address), static_cast<Type>(val));
+}
+
 }  // namespace atomic
 }  // namespace bifeat
 
