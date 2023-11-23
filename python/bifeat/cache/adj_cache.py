@@ -6,7 +6,7 @@ import BiFeatLib as capi
 
 class StructureCacheServer:
 
-    def __init__(self, indptr, indices, fan_out):
+    def __init__(self, indptr, indices, fan_out, count_hit=False):
         self.indptr = indptr
         self.indices = indices
         capi._CAPI_pin_tensor(indptr)
@@ -24,6 +24,7 @@ class StructureCacheServer:
         self.no_cache = False
 
         self._fan_out = fan_out
+        self._count_hit = count_hit
 
         self.access_times = 0
         self.hit_times = 0
@@ -105,14 +106,14 @@ class StructureCacheServer:
                 self.hit_times / self.access_times,
             )
 
-    def sample_neighbors(self, seeds_nids, replace=False, count_hit=False):
+    def sample_neighbors(self, seeds_nids, replace=False):
         seeds = seeds_nids.cuda(self.device_id)
         blocks = []
 
         for num_picks in reversed(self._fan_out):
 
             if self.full_cached:
-                if count_hit:
+                if self._count_hit:
                     self.access_times += seeds_nids.shape[0]
                     self.hit_times += seeds_nids.shape[0]
                 coo_row, coo_col = capi._CAPI_cuda_sample_neighbors(
@@ -120,13 +121,13 @@ class StructureCacheServer:
                     replace)
 
             elif self.no_cache:
-                if count_hit:
+                if self._count_hit:
                     self.access_times += seeds_nids.shape[0]
                 coo_row, coo_col = capi._CAPI_cuda_sample_neighbors(
                     seeds, self.indptr, self.indices, num_picks, replace)
 
             else:
-                if count_hit:
+                if self._count_hit:
                     self.access_times += seeds_nids.shape[0]
                     self.hit_times += capi._CAPI_count_cached_nids(
                         seeds_nids, self.cached_nids_hashed,
