@@ -337,12 +337,67 @@ def process_mag240m(dataset_path, save_path, gen_feat=False):
         full_feat.flush()
 
 
+def process_friendster(dataset_path, save_path):
+
+    def _download(url, path, filename):
+        import requests
+
+        fn = os.path.join(path, filename)
+        if os.path.exists(fn):
+            return
+        print("Download friendster.")
+        os.makedirs(path, exist_ok=True)
+        f_remote = requests.get(url, stream=True)
+        sz = f_remote.headers.get('content-length')
+        assert f_remote.status_code == 200, 'fail to open {}'.format(url)
+        with open(fn, 'wb') as writer:
+            for chunk in f_remote.iter_content(chunk_size=1024 * 1024):
+                writer.write(chunk)
+        print('Download finished.')
+
+    _download(
+        'https://dgl-asv-data.s3-us-west-2.amazonaws.com/dataset/friendster/com-friendster.ungraph.txt.gz',
+        dataset_path, 'com-friendster.ungraph.txt.gz')
+    df = pd.read_csv(os.path.join(dataset_path,
+                                  'com-friendster.ungraph.txt.gz'),
+                     sep='\t',
+                     skiprows=4,
+                     header=None,
+                     names=['src', 'dst'],
+                     compression='gzip')
+    src = df['src'].values
+    dst = df['dst'].values
+    print('construct the graph...')
+    g = dgl.graph((src, dst))
+    g = g.formats("csc")
+    g.create_formats_()
+    indptr, indices, _ = g.adj_tensors("csc")
+    num_nodes = g.num_nodes()
+    num_edges = g.num_edges()
+    del g
+
+    train_idx = torch.randperm(num_nodes)[:int(num_nodes * 0.05)]
+
+    meta_data = {
+        "dataset": "friendster",
+        "num_nodes": num_nodes,
+        "num_edges": num_edges,
+        "num_train_nodes": train_idx.shape[0],
+    }
+
+    print("Save data...")
+    torch.save(indptr.long(), os.path.join(save_path, "indptr.pt"))
+    torch.save(indices.long(), os.path.join(save_path, "indices.pt"))
+    torch.save(train_idx, os.path.join(save_path, "train_idx.pt"))
+    torch.save(meta_data, os.path.join(save_path, "metadata.pt"))
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--dataset",
         default="ogbn-papers100M",
-        choices=["ogbn-products", "ogbn-papers100M", "mag240m"])
+        choices=["ogbn-products", "ogbn-papers100M", "mag240m", "friendster"])
     parser.add_argument("--root", help="Path of the dataset.")
     parser.add_argument("--save-path", help="Path to save the processed data.")
     args = parser.parse_args()
@@ -354,3 +409,5 @@ if __name__ == '__main__':
         process_products(args.root, args.save_path)
     elif args.dataset == "mag240m":
         process_mag240m(args.root, args.save_path)
+    elif args.dataset == "friendster":
+        process_friendster(args.root, args.save_path)
