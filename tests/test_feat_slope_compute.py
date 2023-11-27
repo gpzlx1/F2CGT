@@ -1,23 +1,23 @@
 import torch
+from ogb import nodeproppred
 import time
 from bifeat.cache import compute_feat_slope
 
 torch.manual_seed(1)
 
-length = 10_000_000
-dim = 128
-feat = torch.randn((length, dim)).float()
-heat = torch.randint(0, 200, (length, ))
-
-cache_rate = 0
-step = 0.1
-num_step = 10
-
-num_iters = 30
-fetch_size = 1_000_000
+data = nodeproppred.DglNodePropPredDataset(name="ogbn-products", root="/data")
+g = data[0][0]
+print(g)
+indptr, indices, _ = g.adj_tensors("csc")
+fan_out = [5, 10, 15]
+batch_size = 1000
+seeds = torch.arange(0, 196615)
+feature = torch.randn((g.num_nodes(), 100))
+# heat = indptr[1:] - indptr[:-1]
+heat = torch.load("/data/presampling-heat/products-5,10,15-heat.pt")
 
 tic = time.time()
-slope = compute_feat_slope(feat, heat, fetch_size, num_iters, step, num_step)
+slope = compute_feat_slope(feature, heat, indptr, indices, seeds, fan_out,
+                           batch_size)
 toc = time.time()
-print(slope)
 print(toc - tic)

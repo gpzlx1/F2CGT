@@ -1,7 +1,7 @@
 import torch
 from ogb import nodeproppred
 import time
-from bifeat.cache import compute_adj_slope, compute_feat_slope
+from bifeat.cache import compute_adj_slope
 
 torch.manual_seed(1)
 
@@ -14,16 +14,7 @@ batch_size = 1000
 seeds = torch.arange(0, 196615)
 
 tic = time.time()
-slope, input_num = compute_adj_slope(indptr, indices, seeds, fan_out,
-                                     batch_size, indptr[1:] - indptr[:-1])
-toc = time.time()
-print(toc - tic)
-
-features = torch.randn((
-    g.num_nodes(),
-    100,
-))
-tic = time.time()
-slope = compute_feat_slope(features, indptr[1:] - indptr[:-1], input_num)
+slope = compute_adj_slope(indptr, indices, seeds, fan_out, batch_size,
+                          indptr[1:] - indptr[:-1])
 toc = time.time()
 print(toc - tic)

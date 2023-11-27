@@ -20,15 +20,12 @@ def compute_adj_slope(indptr,
     num_nodes = hotness.shape[0]
     nids = torch.argsort(hotness, descending=True).long()
 
-    input_nodes_num_log = []
-
     # warmup
     cached_nids = torch.tensor([])
     sampler = StructureCacheServer(indptr, indices, fan_out, count_hit=True)
     sampler.cache_data(cached_nids)
     for it, seeds in enumerate(seeds_loader):
-        input_nodes, _, _ = sampler.sample_neighbors(seeds)
-        input_nodes_num_log.append(input_nodes.shape[0])
+        _ = sampler.sample_neighbors(seeds)
 
     stats = []
     for i in range(num_epochs):
@@ -41,8 +38,7 @@ def compute_adj_slope(indptr,
             torch.cuda.synchronize()
             tic = time.time()
             for it, seeds in enumerate(seeds_loader):
-                input_nodes, _, _ = sampler.sample_neighbors(seeds)
-                input_nodes_num_log.append(input_nodes.shape[0])
+                _ = sampler.sample_neighbors(seeds)
             torch.cuda.synchronize()
             toc = time.time()
             epoch_time = toc - tic
@@ -58,32 +54,35 @@ def compute_adj_slope(indptr,
     torch.cuda.empty_cache()
     stats = np.array(stats)
     slope = -np.polyfit(stats[:, 0], stats[:, 1], 1)[0]
-    input_nodes_num = int(np.mean(input_nodes_num_log))
 
     print("Adj slope = {:.5f}".format(slope))
-    print("Avg mini-batch src nodes num = {}".format(input_nodes_num))
 
-    # input_nodes_num can be the params of compute_feat_slope
-    return slope, input_nodes_num
+    return slope
 
 
 def compute_feat_slope(features,
                        hotness,
-                       input_nodes_num,
-                       num_iters=10,
+                       indptr,
+                       indices,
+                       seeds,
+                       fan_out,
+                       batch_size,
                        step=0.2,
                        num_epochs=5):
     idx = torch.argsort(hotness, descending=True).long()
     cache_rate = 0
     num_nodes = hotness.shape[0]
 
+    seeds_loader = SeedGenerator(seeds, batch_size, shuffle=True)
+    sampler = StructureCacheServer(indptr, indices, fan_out, count_hit=True)
+    sampler.cache_data(torch.tensor([]))
+
     # warmup
     cached_nids = torch.tensor([])
     feature_cache = FeatureCacheServer(features, count_hit=True)
     feature_cache.cache_data(cached_nids)
-    for it in range(num_iters):
-        input_nodes = torch.randint(0, num_nodes,
-                                    (input_nodes_num, )).unique().cuda()
+    for it, seeds in enumerate(seeds_loader):
+        input_nodes, _, _ = sampler.sample_neighbors(seeds)
         _ = feature_cache[input_nodes]
 
     stats = []
@@ -95,17 +94,14 @@ def compute_feat_slope(features,
         try:
             feature_cache.cache_data(cached_nids)
             epoch_time = 0
-            torch.cuda.synchronize()
-            tic = time.time()
-            for it in range(num_iters):
-                input_nodes = torch.randint(
-                    0, num_nodes, (input_nodes_num, )).unique().cuda()
+            for it, seeds in enumerate(seeds_loader):
+                input_nodes, _, _ = sampler.sample_neighbors(seeds)
+                torch.cuda.synchronize()
                 tic = time.time()
                 _ = feature_cache[input_nodes]
                 torch.cuda.synchronize()
                 toc = time.time()
-                if it >= 5:
-                    epoch_time += toc - tic
+                epoch_time += toc - tic
         except:
             break
         print(
