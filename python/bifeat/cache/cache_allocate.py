@@ -94,15 +94,18 @@ def compute_feat_slope(features,
         cached_nids = idx[:cache_num]
         try:
             feature_cache.cache_data(cached_nids)
+            epoch_time = 0
             torch.cuda.synchronize()
             tic = time.time()
             for it in range(num_iters):
                 input_nodes = torch.randint(
                     0, num_nodes, (input_nodes_num, )).unique().cuda()
+                tic = time.time()
                 _ = feature_cache[input_nodes]
-            torch.cuda.synchronize()
-            toc = time.time()
-            epoch_time = toc - tic
+                torch.cuda.synchronize()
+                toc = time.time()
+                if it >= 5:
+                    epoch_time += toc - tic
         except:
             break
         print(
@@ -114,10 +117,10 @@ def compute_feat_slope(features,
     feature_cache.clear_cache()
     torch.cuda.empty_cache()
     stats = np.array(stats)
-    slope = -np.polyfit(stats[:, 0], stats[:, 1], 1)[0]
+    slope = -np.polyfit(stats[:, 0], stats[:, 1], 1)[0] / features.shape[1]
 
     print("Feature slope = {:.5f}".format(slope))
-    return slope, input_nodes_num, num_iters
+    return slope
 
 
 def compute_feat_sapce(feat_dim, feat_dtype):

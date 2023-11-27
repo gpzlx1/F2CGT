@@ -85,18 +85,18 @@ if __name__ == "__main__":
     # part cache
     cache_nids = torch.randint(0, 100, (20, )).unique().int()
     part_cache_server = FeatureCacheServer(cpu_data)
-    part_cache_server.cache_feature(cache_nids)
+    part_cache_server.cache_data(cache_nids)
     assert part_cache_server[index].equal(cpu_data[index.cpu().long()].cuda())
     del part_cache_server
 
     # full cache
     full_cache_server = FeatureCacheServer(cpu_data)
-    full_cache_server.cache_feature(torch.arange(0, 100).int())
+    full_cache_server.cache_data(torch.arange(0, 100).int())
     assert full_cache_server[index].equal(cpu_data[index.cpu().long()].cuda())
     del full_cache_server
 
     # no cache
     no_cache_server = FeatureCacheServer(cpu_data)
-    no_cache_server.cache_feature(torch.tensor([]).int())
+    no_cache_server.cache_data(torch.tensor([]).int())
     assert no_cache_server[index].equal(cpu_data[index.cpu().long()].cuda())
     del no_cache_server
