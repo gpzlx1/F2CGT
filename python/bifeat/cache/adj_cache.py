@@ -114,23 +114,23 @@ class StructureCacheServer:
 
             if self.full_cached:
                 if self._count_hit:
-                    self.access_times += seeds_nids.shape[0]
-                    self.hit_times += seeds_nids.shape[0]
+                    self.access_times += seeds.shape[0]
+                    self.hit_times += seeds.shape[0]
                 coo_row, coo_col = capi._CAPI_cuda_sample_neighbors(
                     seeds, self.cached_indptr, self.cached_indices, num_picks,
                     replace)
 
             elif self.no_cache:
                 if self._count_hit:
-                    self.access_times += seeds_nids.shape[0]
+                    self.access_times += seeds.shape[0]
                 coo_row, coo_col = capi._CAPI_cuda_sample_neighbors(
                     seeds, self.indptr, self.indices, num_picks, replace)
 
             else:
                 if self._count_hit:
-                    self.access_times += seeds_nids.shape[0]
+                    self.access_times += seeds.shape[0]
                     self.hit_times += capi._CAPI_count_cached_nids(
-                        seeds_nids, self.cached_nids_hashed,
+                        seeds, self.cached_nids_hashed,
                         self.cached_nids_in_gpu_hashed)
                 coo_row, coo_col = capi._CAPI_cuda_sample_neighbors_with_caching(
                     seeds, self.cached_indptr, self.indptr,
