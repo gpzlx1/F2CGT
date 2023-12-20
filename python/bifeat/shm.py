@@ -216,6 +216,7 @@ class ShmManager(object):
 
         meta_data = torch.load(os.path.join(self.dataset_path, "metadata.pt"))
         assert meta_data["dataset"] == self.dataset_name
+        self.graph_meta_data = meta_data
 
         if self._is_chief:
             labels = torch.load(os.path.join(self.dataset_path, "labels.pt"))

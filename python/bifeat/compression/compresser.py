@@ -2,7 +2,7 @@ import torch
 import dgl
 import BiFeatLib as capi
 import torch.distributed as dist
-import math
+import os
 from ..shm import ShmManager
 from .utils import sq_compress, vq_compress, sq_decompress, vq_decompress
 
@@ -187,50 +187,33 @@ class CompressionManager(object):
             codebooks.append(codebook)
             compressed_features.append(compressed_feature)
 
-        # gather codebooks
-        self.codebooks = [None] * num_parts
-        self.compressed_features = [None] * num_parts
-        for i in range(num_parts):
-            ouput_codebooks = [None for _ in range(world_size)]
-            dist.all_gather_object(ouput_codebooks, codebooks[i])
-            full_codebooks = torch.cat(
-                [value.unsqueeze(0) for value in ouput_codebooks], dim=0)
-            self.codebooks[i] = full_codebooks
-
-        # gather feature
+        # root ranks gather results
         roots = [
             i for i in range(world_size)
             if i % dist.get_world_size(self.shm_manager._local_group) == 0
         ]
 
         for root in roots:
-            for j in range(num_parts):
+            if rank == root:
+                self.codebooks = [None] * num_parts
+                self.compressed_features = [None] * num_parts
+            for i in range(num_parts):
                 if rank == root:
-                    ouput_features = [None for _ in range(world_size)]
-                    dist.gather_object(compressed_features[j], ouput_features,
-                                       root)
-                    full_features = torch.cat(ouput_features, dim=0)
-                    self.compressed_features[j] = full_features
-
-                else:
-                    dist.gather_object(compressed_features[j], None, root)
-
-        # create shm features for local group
-        if self.shm_manager._is_chief:
-            for i in range(num_parts):
-                compressed_feature = self.compressed_features[i]
-                shm_compress_feature = self.shm_manager.create_shm_tensor(
-                    self.shm_manager.dataset_name + "_shm_compress_feature_" +
-                    str(i), compressed_feature.dtype, compressed_feature.shape)
-                shm_compress_feature.copy_(compressed_feature)
-                self.compressed_features[i] = shm_compress_feature
-
-        if not self.shm_manager._is_chief:
-            for i in range(num_parts):
-                shm_compress_feature = self.shm_manager.create_shm_tensor(
-                    self.shm_manager.dataset_name + "_shm_compress_feature_" +
-                    str(i), None, None)
-                self.compressed_features[i] = shm_compress_feature
+                    output_codebooks = [None for _ in range(world_size)]
+                    output_features = [None for _ in range(world_size)]
+                dist.gather_object(codebooks[i],
+                                   output_codebooks if rank == root else None,
+                                   root)
+                dist.gather_object(compressed_features[i],
+                                   output_features if rank == root else None,
+                                   root)
+                if rank == root:
+                    full_codebooks = torch.cat(
+                        [value.unsqueeze(0) for value in output_codebooks],
+                        dim=0)
+                    self.codebooks[i] = full_codebooks
+                    full_features = torch.cat(output_features, dim=0)
+                    self.compressed_features[i] = full_features
 
         # compute compressed size and compression ratio
         if self.shm_manager._is_chief:
@@ -243,12 +226,6 @@ class CompressionManager(object):
                 "compressed size: {:.3f} GB, compression ratio: {:.1f}".format(
                     self.compressed_size / 1024 / 1024 / 1024,
                     self.original_size / self.compressed_size))
-
-        # compute partition_range
-        self.part_size_list = torch.tensor(self.part_size_list).long()
-        self.partition_range = torch.zeros(num_parts + 1, dtype=torch.long)
-        self.partition_range[1:] = torch.cumsum(self.part_size_list, dim=0)
-        self.chunk_size = (self.part_size_list + world_size - 1) // world_size
 
     def decompress_old(self, idx):
         output_tensor = torch.empty((idx.numel(), self.features.shape[1]),
@@ -314,3 +291,19 @@ class CompressionManager(object):
                 output_tensor[part_index] = decompressed_feature
 
         return output_tensor
+
+    def save_data(self):
+        if self.shm_manager._is_chief:
+            torch.save(self.shm_manager.graph_meta_data,
+                       os.path.join(self.cache_path, "metadata.pt"))
+            torch.save(self.compressed_features,
+                       os.path.join(self.cache_path, "compressed_features.pt"))
+            torch.save(self.codebooks,
+                       os.path.join(self.cache_path, "codebooks.pt"))
+            torch.save(self.labels, os.path.join(self.cache_path, "labels.pt"))
+            torch.save(self.indptr, os.path.join(self.cache_path, "indptr.pt"))
+            torch.save(self.indices, os.path.join(self.cache_path,
+                                                  "indices.pt"))
+            torch.save(self.train_seeds,
+                       os.path.join(self.cache_path, "train_idx.pt"))
+            print("Results saved to {}".format(self.cache_path))
