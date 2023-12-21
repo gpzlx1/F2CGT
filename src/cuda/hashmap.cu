@@ -7,6 +7,33 @@
 #define BLOCK_SIZE 128
 
 namespace bifeat {
+
+torch::Tensor SearchHashMapCUDA(torch::Tensor hash_key, torch::Tensor hash_val,
+                                torch::Tensor input_key) {
+  CHECK_CUDA(input_key);
+  PG_ID_TYPE_SWITCH(input_key.dtype(), IdType, {
+    int num_items = input_key.numel();
+    int dir_size = hash_key.numel();
+    torch::Tensor result = torch::full_like(input_key, -1, input_key.options());
+    using it = thrust::counting_iterator<IdType>;
+    thrust::for_each(
+        it(0), it(num_items),
+        [key = hash_key.data_ptr<IdType>(), val = hash_val.data_ptr<int32_t>(),
+         in = input_key.data_ptr<IdType>(), out = result.data_ptr<IdType>(),
+         size = dir_size] __device__(IdType i) mutable {
+          Hashmap<IdType> table(key, val, size);
+          const int32_t pos = table.SearchForPos(in[i]);
+          if (pos != -1) {
+            out[i] = IdType(val[pos]);
+          } else {
+            out[i] = -1;
+          }
+        });
+    return result;
+  });
+  return torch::Tensor();
+}
+
 std::tuple<torch::Tensor, torch::Tensor> CreateHashMapTensorCUDA(
     torch::Tensor cache_nids) {
   CHECK_CUDA(cache_nids);

@@ -23,6 +23,8 @@ PYBIND11_MODULE(BiFeatLib, m) {
            py::arg("dst2src"));
 
   m.def("_CAPI_create_hashmap", &CreateHashMapTensorCUDA, py::arg("cache_nids"))
+      .def("_CAPI_search_hashmap", &SearchHashMapCUDA, py::arg("hash_key"),
+           py::arg("hash_val"), py::arg("input_key"))
       .def("_CAPI_pin_tensor", &TensorPinMemory, py::arg("data"))
       .def("_CAPI_unpin_tensor", &TensorUnpinMemory, py::arg("data"))
       .def("_CAPI_fetch_feature_data", &FeatureFetchDataCUDA, py::arg("data"),
@@ -31,6 +33,8 @@ PYBIND11_MODULE(BiFeatLib, m) {
            &FeatureFetchDataWithCachingCUDA, py::arg("cpu_data"),
            py::arg("gpu_data"), py::arg("hashed_key_tensor"),
            py::arg("hashed_value_tensor"), py::arg("nid"))
+      .def("_CAPI_cuda_index_fetch", &CUDAIndexFetch, py::arg("src"),
+           py::arg("src_index"), py::arg("dst"), py::arg("dst_index"))
       .def("_CAPI_cuda_sample_neighbors", &RowWiseSamplingUniformCUDA,
            py::arg("seeds"), py::arg("indptr"), py::arg("indices"),
            py::arg("num_picks"), py::arg("replace"))

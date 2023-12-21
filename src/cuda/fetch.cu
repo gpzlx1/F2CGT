@@ -122,4 +122,41 @@ torch::Tensor FeatureFetchDataCUDA(torch::Tensor data, torch::Tensor nid) {
   return torch::Tensor();
 }
 
+template <typename DataType, typename IndexType, int WARP_SIZE>
+__global__ void CUDAIndexFetchKernel(DataType *src, IndexType *src_index,
+                                     DataType *dst, IndexType *dst_index,
+                                     int64_t num_elem, int64_t dim) {
+  int64_t thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+  int64_t warp_id = thread_id / WARP_SIZE;
+  int64_t lane = thread_id % WARP_SIZE;
+  int64_t warp_num = blockDim.x * gridDim.x / WARP_SIZE;
+
+  for (int i = warp_id; i < num_elem; i += warp_num) {
+    int64_t src_idx = src_index[i];
+    int64_t dst_idx = dst_index[i];
+    for (int j = lane; j < dim; j += WARP_SIZE) {
+      dst[dst_idx * dim + j] = src[src_idx * dim + j];
+    }
+  }
+}
+
+void CUDAIndexFetch(torch::Tensor src, torch::Tensor src_index,
+                    torch::Tensor dst, torch::Tensor dst_index) {
+  CHECK(src.size(1) == dst.size(1));
+  CHECK(dst_index.numel() == src_index.numel());
+  int64_t num_elem = src_index.numel();
+  int64_t dim = src.size(1);
+
+  PG_VALUE_TYPE_SWITCH(src.dtype(), DataType, {
+    PG_ID_TYPE_SWITCH(src_index.dtype(), IndexType, {
+      int block_size = 256;
+      int grid_size = (num_elem + block_size - 1) / block_size;
+      CUDAIndexFetchKernel<DataType, IndexType, 32><<<grid_size, block_size>>>(
+          src.data_ptr<DataType>(), src_index.data_ptr<IndexType>(),
+          dst.data_ptr<DataType>(), dst_index.data_ptr<IndexType>(), num_elem,
+          dim);
+    });
+  });
+}
+
 }  // namespace bifeat

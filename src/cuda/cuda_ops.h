@@ -6,12 +6,17 @@
 namespace bifeat {
 std::tuple<torch::Tensor, torch::Tensor> CreateHashMapTensorCUDA(
     torch::Tensor cache_nids);
+torch::Tensor SearchHashMapCUDA(torch::Tensor hash_key, torch::Tensor hash_val,
+                                torch::Tensor input_key);
 
 torch::Tensor FeatureFetchDataWithCachingCUDA(
     torch::Tensor cpu_data, torch::Tensor gpu_data, torch::Tensor nid,
     torch::Tensor hashed_key_tensor, torch::Tensor hashed_value_tensor);
 
 torch::Tensor FeatureFetchDataCUDA(torch::Tensor data, torch::Tensor nid);
+
+void CUDAIndexFetch(torch::Tensor src, torch::Tensor src_index,
+                    torch::Tensor dst, torch::Tensor dst_index);
 
 std::tuple<torch::Tensor, torch::Tensor> RowWiseSamplingUniformCUDA(
     torch::Tensor seeds, torch::Tensor indptr, torch::Tensor indices,

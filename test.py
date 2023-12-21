@@ -24,7 +24,7 @@ def main(num_gpus=2):
 
     shm_manager = bifeat.shm.ShmManager(rank,
                                         num_gpus,
-                                        './datasets',
+                                        '/data/ogbn_products/processed',
                                         'ogbn-products',
                                         pin_memory=True)
 

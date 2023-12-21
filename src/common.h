@@ -27,7 +27,7 @@
     }                                                                    \
   }
 
-#define PG_ID_TYPE_SWITCH(val, IdType, ...)         \
+#define PG_ID_TYPE_SWITCH(val, IdType, ...)          \
   do {                                               \
     if ((val) == torch::kInt32) {                    \
       typedef int32_t IdType;                        \
@@ -40,19 +40,29 @@
     }                                                \
   } while (0);
 
-#define PG_VALUE_TYPE_SWITCH(val, VType, ...)                     \
-  do {                                                             \
-    if ((val) == torch::kInt32) {                                  \
-      typedef int32_t VType;                                       \
-      { __VA_ARGS__ }                                              \
-    } else if ((val) == torch::kInt64) {                           \
-      typedef int64_t VType;                                       \
-      { __VA_ARGS__ }                                              \
-    } else if ((val) == torch::kFloat32) {                         \
-      typedef float VType;                                         \
-      { __VA_ARGS__ }                                              \
-    } else {                                                       \
-      LOG(FATAL) << "Value can only be int32 or int64 or float32"; \
-    }                                                              \
+#define PG_VALUE_TYPE_SWITCH(val, VType, ...)                                 \
+  do {                                                                        \
+    if ((val) == torch::kInt32) {                                             \
+      typedef int32_t VType;                                                  \
+      { __VA_ARGS__ }                                                         \
+    } else if ((val) == torch::kInt64) {                                      \
+      typedef int64_t VType;                                                  \
+      { __VA_ARGS__ }                                                         \
+    } else if ((val) == torch::kInt16) {                                      \
+      typedef int16_t VType;                                                  \
+      { __VA_ARGS__ }                                                         \
+    } else if ((val) == torch::kInt8) {                                       \
+      typedef int8_t VType;                                                   \
+      { __VA_ARGS__ }                                                         \
+    } else if ((val) == torch::kUInt8) {                                      \
+      typedef uint8_t VType;                                                  \
+      { __VA_ARGS__ }                                                         \
+    } else if ((val) == torch::kFloat32) {                                    \
+      typedef float VType;                                                    \
+      { __VA_ARGS__ }                                                         \
+    } else {                                                                  \
+      LOG(FATAL)                                                              \
+          << "Value can only be uint8, int8, int16, int32, int64 or float32"; \
+    }                                                                         \
   } while (0);
 #endif

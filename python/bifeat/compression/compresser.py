@@ -287,6 +287,9 @@ class CompressionManager(object):
 
     def save_data(self):
         if self.shm_manager._is_chief:
+            metadata = self.shm_manager.graph_meta_data
+            metadata["part_size"] = self.part_size_list
+            metadata["methods"] = self.methods
             torch.save(self.shm_manager.graph_meta_data,
                        os.path.join(self.cache_path, "metadata.pt"))
             torch.save(self.compressed_features,
