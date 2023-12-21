@@ -172,7 +172,7 @@ class CompressedFeatureCacheServer:
                                                   dtype=torch.long)
         self.cached_partition_range[1:] = torch.cumsum(
             self.cached_part_size_list, dim=0)
-        self.cached_partition_range = self.partition_range.cuda()
+        self.cached_partition_range = self.cached_partition_range.cuda()
 
         toc = time.time()
         print("GPU {} takes {:.3f} sec to cache all the feature partitions".
