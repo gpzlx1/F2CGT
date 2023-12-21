@@ -2,3 +2,5 @@ venv
 build
 *.json
 *.egg*
+datasets
+dataset

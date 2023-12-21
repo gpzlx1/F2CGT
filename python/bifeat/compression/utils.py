@@ -3,7 +3,7 @@ import math
 import numpy as np
 import tqdm
 from .packbits import packbits, unpackbits
-# from cuml import KMeans
+from cuml import KMeans
 
 
 def sq_compress(tensor, target_bits, device):
@@ -54,8 +54,6 @@ def sq_compress(tensor, target_bits, device):
     fmin = fmin.to(device)
     fmax = fmax.to(device)
 
-    print("scalar codebook: {}".format(codebook))
-
     print("start scalar compressing, precision={}, fmin={}, fmax={}".format(
         target_bits, fmin, fmax))
 
@@ -86,7 +84,7 @@ def sq_compress(tensor, target_bits, device):
                 tensor_.to(torch.uint8), mask=(1 << target_bits) - 1),
                                                non_blocking=True)
         elif target_bits == 8:
-            compressed_tensor[start:end].copy_(tensor_.to(dtype=torch.int16),
+            compressed_tensor[start:end].copy_(tensor_.to(dtype=torch.int8),
                                                non_blocking=True)
         else:
             raise NotImplementedError
@@ -99,6 +97,7 @@ def sq_compress(tensor, target_bits, device):
 
 def sq_decompress(compressed_tensor, feat_dim, codebook):
     emin, emax, mean, drange, target_bits = codebook
+    drange = drange.item()
 
     exp = compressed_tensor
     if target_bits < 8:

@@ -34,6 +34,14 @@ int64_t CountCachedNidsNum(torch::Tensor input_nids,
 void meanaggr(torch::Tensor &output, const torch::Tensor &input,
               const torch::Tensor &src, const torch::Tensor &dst, int64_t dim,
               int64_t node_num, int64_t edge_num);
+
+torch::Tensor vq_decompress(torch::Tensor codebook_indices,
+                            torch::Tensor compressed_features,
+                            torch::Tensor codebooks, int64_t feat_dim);
+
+torch::Tensor sq_decompress(torch::Tensor codebook_indices,
+                            torch::Tensor compressed_features,
+                            torch::Tensor codebooks, int64_t feat_dim);
 };  // namespace bifeat
 
 #endif

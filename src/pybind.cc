@@ -48,5 +48,12 @@ PYBIND11_MODULE(BiFeatLib, m) {
       .def("_CAPI_count_cached_nids", &CountCachedNidsNum,
            py::arg("input_nids"), py::arg("hashed_orig_nids"),
            py::arg("hashed_device_nids"));
+
+  m.def("_CAPI_vq_decompress", &vq_decompress, py::arg("codebook_indices"),
+        py::arg("compressed_features"), py::arg("codebooks"),
+        py::arg("feat_dim"))
+      .def("_CAPI_sq_decompress", &sq_decompress, py::arg("codebook_indices"),
+           py::arg("compressed_features"), py::arg("codebooks"),
+           py::arg("feat_dim"));
   // .def("_CAPI_meanaggr", & meanaggr);
 }
