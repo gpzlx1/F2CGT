@@ -11,7 +11,7 @@ decompresser = Decompresser(metadata["feature_dim"], codebooks,
 feature_server = CompressedFeatureCacheServer(g["features"], decompresser)
 num_feat_parts = len(g["features"])
 
-idx = torch.randint(0, metadata["num_nodes"], (100000, ), device="cuda")
+idx = torch.randint(0, metadata["num_nodes"], (1000000, ), device="cuda")
 
 # no cache
 cache_ids = []
@@ -19,9 +19,12 @@ for i in range(num_feat_parts):
     cache_ids.append(torch.tensor([], dtype=torch.int64, device="cuda"))
 feature_server.clear_cache()
 feature_server.cache_data(cache_ids)
-feat1 = feature_server[idx]
-print(feat1)
-print(feat1.shape)
+for _ in range(10):
+    tic = time.time()
+    feat1 = feature_server[idx]
+    toc = time.time()
+    print(toc - tic)
+print()
 
 # full cache
 cache_ids = []
@@ -33,9 +36,12 @@ for i in range(num_feat_parts):
                      device="cuda"))
 feature_server.clear_cache()
 feature_server.cache_data(cache_ids)
-feat2 = feature_server[idx]
-print(feat2)
-print(feat2.shape)
+for _ in range(10):
+    tic = time.time()
+    feat2 = feature_server[idx]
+    toc = time.time()
+    print(toc - tic)
+print()
 
 # part cache
 cache_ids = []
@@ -47,9 +53,12 @@ for i in range(num_feat_parts):
                      device="cuda"))
 feature_server.clear_cache()
 feature_server.cache_data(cache_ids)
-feat3 = feature_server[idx]
-print(feat3)
-print(feat3.shape)
+for _ in range(10):
+    tic = time.time()
+    feat3 = feature_server[idx]
+    toc = time.time()
+    print(toc - tic)
+print()
 
 assert torch.equal(feat1, feat2)
 assert torch.equal(feat1, feat3)
