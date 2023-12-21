@@ -9,8 +9,12 @@ class StructureCacheServer:
     def __init__(self, indptr, indices, fan_out, count_hit=False):
         self.indptr = indptr
         self.indices = indices
-        capi._CAPI_pin_tensor(indptr)
-        capi._CAPI_pin_tensor(indices)
+        self._pin_indptr = not indptr.is_pinned
+        self._pin_indices = not indices.is_pinned
+        if self._pin_indptr:
+            capi._CAPI_pin_tensor(indptr)
+        if self._pin_indices:
+            capi._CAPI_pin_tensor(indices)
 
         self.cached_indptr = None
         self.cached_indices = None
@@ -21,7 +25,7 @@ class StructureCacheServer:
         self.cached_nids_in_gpu_hashed = None
 
         self.full_cached = False
-        self.no_cache = False
+        self.no_cache = True
 
         self._fan_out = fan_out
         self._count_hit = count_hit
@@ -30,14 +34,17 @@ class StructureCacheServer:
         self.hit_times = 0
 
     def __del__(self):
-        capi._CAPI_unpin_tensor(self.indptr)
-        capi._CAPI_unpin_tensor(self.indices)
+        if self._pin_indptr:
+            capi._CAPI_unpin_tensor(self.indptr)
+        if self._pin_indices:
+            capi._CAPI_unpin_tensor(self.indices)
 
     def cache_data(self, cache_nids):
         start = time.time()
 
         if cache_nids.shape[0] >= self.indptr.shape[0] - 1:
             self.full_cached = True
+            self.no_cache = False
 
             self.cached_indptr = self.indptr.cuda(self.device_id)
             self.cached_indices = self.indices.cuda(self.device_id)
@@ -52,6 +59,7 @@ class StructureCacheServer:
             indptr_cached_size = 0
             indices_cached_size = 0
         else:
+            self.no_cache = False
             cache_nids = cache_nids.cuda(self.device_id)
             self.cached_nids_hashed, self.cached_nids_in_gpu_hashed = capi._CAPI_create_hashmap(
                 cache_nids)

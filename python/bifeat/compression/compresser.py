@@ -4,6 +4,8 @@ import BiFeatLib as capi
 import torch.distributed as dist
 import os
 from ..shm import ShmManager
+from ..cache import StructureCacheServer
+from ..dataloading import SeedGenerator
 from .utils import sq_compress, vq_compress, sq_decompress, vq_decompress
 
 
@@ -39,37 +41,28 @@ class CompressionManager(object):
         self.original_size = self.features.numel(
         ) * self.features.element_size()
 
-    def presampling(self, fanouts):
+    def presampling(self, fanouts, batch_size=512):
         self.hotness = torch.zeros(self.indptr.numel() - 1,
                                    device='cuda',
                                    dtype=torch.float32)
-        sampler = dgl.dataloading.NeighborSampler(fanouts)
 
-        g = dgl.graph(('csc', (self.indptr, self.indices,
-                               torch.empty(0, dtype=torch.int64))))
+        sampler = StructureCacheServer(self.indptr, self.indices, fanouts)
 
         rank = dist.get_rank()
         world_size = dist.get_world_size()
-
         part_size = (self.train_seeds.numel() + world_size - 1) // world_size
         start = rank * part_size
         end = (rank + 1) * part_size
-
         local_train_seeds = self.train_seeds[start:end]
-        dataloader = dgl.dataloading.DataLoader(
-            g,
-            local_train_seeds,
-            sampler,
-            batch_size=512,
-            device='cuda',
-            num_workers=0,
-            use_uva=True,
-            shuffle=True,
-        )
-        for input_nodes, output_nodes, blocks in dataloader:
+        seeds_loader = SeedGenerator(local_train_seeds,
+                                     batch_size,
+                                     shuffle=True)
+
+        for it, seeds in enumerate(seeds_loader):
+            frontier, _, blocks = sampler.sample_neighbors(seeds)
             for block in blocks:
                 self.hotness[block.dstdata[dgl.NID]] += 1
-            self.hotness[output_nodes] += 1
+            self.hotness[frontier] += 1
 
         dist.all_reduce(self.hotness, op=dist.ReduceOp.SUM)
 
