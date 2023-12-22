@@ -1,6 +1,13 @@
-import dgl.nn.pytorch as dglnn
-import torch as th
+import torch
 import torch.nn as nn
+import torch.nn.functional as F
+import dgl
+import dgl.nn.pytorch as dglnn
+from dgl.dataloading import (
+    DataLoader,
+    MultiLayerFullNeighborSampler,
+)
+import tqdm
 
 
 class SAGE(nn.Module):
@@ -28,10 +35,48 @@ class SAGE(nn.Module):
                 h = self.dropout(h)
         return h
 
+    def inference(self, g, device, batch_size):
+        """Conduct layer-wise inference to get all the node embeddings."""
+        feat = g.ndata["feat"]
+        sampler = MultiLayerFullNeighborSampler(1,
+                                                prefetch_node_feats=["feat"])
+        dataloader = DataLoader(
+            g,
+            torch.arange(g.num_nodes()).to(g.device),
+            sampler,
+            device=device,
+            batch_size=batch_size,
+            shuffle=False,
+            drop_last=False,
+            num_workers=0,
+        )
+        buffer_device = torch.device("cpu")
+        pin_memory = buffer_device != device
+
+        for l, layer in enumerate(self.layers):
+            y = torch.empty(
+                g.num_nodes(),
+                self.hid_size if l != len(self.layers) - 1 else self.out_size,
+                dtype=feat.dtype,
+                device=buffer_device,
+                pin_memory=pin_memory,
+            )
+            feat = feat.to(device)
+            for input_nodes, output_nodes, blocks in tqdm.tqdm(dataloader):
+                x = feat[input_nodes]
+                h = layer(blocks[0], x)  # len(blocks) = 1
+                if l != len(self.layers) - 1:
+                    h = F.relu(h)
+                    h = self.dropout(h)
+                # by design, our output nodes are contiguous
+                y[output_nodes[0]:output_nodes[-1] + 1] = h.to(buffer_device)
+            feat = y
+        return y
+
 
 def compute_acc(pred, labels):
     """
     Compute the accuracy of prediction given the labels.
     """
     labels = labels.long()
-    return (th.argmax(pred, dim=1) == labels).float().sum() / len(pred)
+    return (torch.argmax(pred, dim=1) == labels).float().sum() / len(pred)

@@ -34,8 +34,10 @@ inline torch::Tensor _GetSubIndptr(torch::Tensor seeds, torch::Tensor indptr,
         IdType end = in_indptr[row + 1];
         if (replace) {
           out[i] = (end - begin) == 0 ? 0 : num_pick;
-        } else {
+        } else if (num_pick > 0) {
           out[i] = MIN(end - begin, num_pick);
+        } else {
+          out[i] = end - begin;
         }
       });
 
@@ -81,8 +83,10 @@ inline torch::Tensor _GetSubIndptrWithCaching(torch::Tensor seeds,
                      }
                      if (replace) {
                        out[i] = (end - begin) == 0 ? 0 : num_pick;
-                     } else {
+                     } else if (num_pick > 0) {
                        out[i] = MIN(end - begin, num_pick);
+                     } else {
+                       out[i] = end - begin;
                      }
                    });
 
@@ -115,8 +119,9 @@ __global__ void _CSRRowWiseSampleUniformKernel(
     const int64_t deg = in_ptr[row + 1] - in_row_start;
     const int64_t out_row_start = out_ptr[out_row];
 
-    if (deg <= num_picks) {
-      // just copy row when there is not enough nodes to sample.
+    if (deg <= num_picks || num_picks <= 0) {
+      // just copy row when there is not enough nodes to sample,
+      // or this is a full sampling
       for (int idx = threadIdx.x; idx < deg; idx += BLOCK_SIZE) {
         const IdType in_idx = in_row_start + idx;
         out_rows[out_row_start + idx] = row;
@@ -225,8 +230,9 @@ __global__ void _CSRRowWiseSampleUniformWithCachingKernel(
     }
     const int64_t out_row_start = out_ptr[out_row];
 
-    if (deg <= num_picks) {
-      // just copy row when there is not enough nodes to sample.
+    if (deg <= num_picks || num_picks <= 0) {
+      // just copy row when there is not enough nodes to sample,
+      // or this is a full sampling
       for (int idx = threadIdx.x; idx < deg; idx += BLOCK_SIZE) {
         const IdType in_idx = in_row_start + idx;
         out_rows[out_row_start + idx] = row;

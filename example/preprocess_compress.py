@@ -31,11 +31,11 @@ if __name__ == "__main__":
     argparser.add_argument("--save-path", type=str, default=".")
     argparser.add_argument("--fan-out",
                            type=str,
-                           default="25,10",
+                           default="5,10,15",
                            help="fanout for presampling")
     argparser.add_argument("--batch-size",
                            type=int,
-                           default=512,
+                           default=1024,
                            help="batch size for presampling")
     args = argparser.parse_args()
     print(args)
