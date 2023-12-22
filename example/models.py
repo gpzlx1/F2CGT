@@ -60,7 +60,7 @@ class SAGE(nn.Module):
                     x = feature[src_nodes.cpu()].cuda()
                 h = layer(blocks[0], x)
                 if l != len(self.layers) - 1:
-                    h = F.relu(h)
+                    h = self.activation(h)
                     h = self.dropout(h)
                 y[dst_nodes] = h.to("cpu")
             feature = y
