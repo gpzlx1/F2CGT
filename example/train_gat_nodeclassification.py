@@ -7,7 +7,7 @@ import numpy as np
 import time
 import bifeat
 from load_dataset import load_compressed_dataset
-from models import SAGE, compute_acc
+from models import GAT, compute_acc
 import argparse
 
 
@@ -112,8 +112,15 @@ def run(rank, world_size, data, args):
                                                   args.batch_size,
                                                   shuffle=True)
 
-    model = SAGE(metadata["feature_dim"], args.num_hidden,
-                 metadata["num_classes"], len(fan_out), F.relu, args.dropout)
+    gat_heads = [int(head) for head in args.heads.split(",")]
+    model = GAT(metadata["feature_dim"],
+                args.num_hidden,
+                metadata["num_classes"],
+                len(fan_out),
+                gat_heads,
+                activation=F.relu,
+                feat_dropout=args.feat_dropout,
+                attn_dropout=args.attn_dropout)
     model = model.to(device)
     model = nn.parallel.DistributedDataParallel(model,
                                                 device_ids=[rank],
@@ -382,13 +389,15 @@ if __name__ == "__main__":
         "number of trainers participated in the compress, no greater than available GPUs num"
     )
     argparser.add_argument("--lr", type=float, default=0.003)
-    argparser.add_argument("--dropout", type=float, default=0.5)
     argparser.add_argument("--batch-size", type=int, default=1024)
     argparser.add_argument("--batch-size-eval", type=int, default=100000)
     argparser.add_argument("--log-every", type=int, default=20)
     argparser.add_argument("--eval-every", type=int, default=5)
     argparser.add_argument("--fan-out", type=str, default="5,10,15")
-    argparser.add_argument("--num-hidden", type=int, default=256)
+    argparser.add_argument("--num-hidden", type=int, default=32)
+    argparser.add_argument("--heads", type=str, default="8,8,1")
+    argparser.add_argument("--feat-dropout", type=float, default=0.1)
+    argparser.add_argument("--attn-dropout", type=float, default=0.1)
     argparser.add_argument("--num-epochs", type=int, default=20)
     argparser.add_argument("--breakdown", action="store_true")
     argparser.add_argument("--reserved-mem",
