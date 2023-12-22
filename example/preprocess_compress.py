@@ -74,12 +74,17 @@ if __name__ == "__main__":
                                                     configs=eval(args.configs),
                                                     cache_path=args.save_path,
                                                     shm_manager=shm_manager)
+
+    valid = graph_tensors["valid_idx"] if "valid_idx" in graph_tensors else None
+    test = graph_tensors["test_idx"] if "test_idx" in graph_tensors else None
     compression_manager.register(
         graph_tensors['indptr'],
         graph_tensors['indices'],
         graph_tensors['train_idx'],
         graph_tensors['labels'],
         graph_tensors['features'],
+        valid,
+        test,
     )
 
     begin = time.time()

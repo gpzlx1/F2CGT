@@ -28,7 +28,10 @@ def load_dataset(path, dataset_name, with_feature=True):
     return graph_tensors, meta_data["num_classes"]
 
 
-def load_compressed_dataset(path, dataset_name):
+def load_compressed_dataset(path,
+                            dataset_name,
+                            with_valid=True,
+                            with_test=True):
     print("load {}...".format(dataset_name))
 
     meta_data = torch.load(os.path.join(path, "metadata.pt"))
@@ -44,6 +47,12 @@ def load_compressed_dataset(path, dataset_name):
 
     codebooks = torch.load(os.path.join(path, "codebooks.pt"))
 
+    if with_valid:
+        valid_idx = torch.load(os.path.join(path, "valid_idx.pt"))
+
+    if with_test:
+        test_idx = torch.load(os.path.join(path, "test_idx.pt"))
+
     graph_tensors = {
         "labels": labels,
         "indptr": indptr,
@@ -53,6 +62,11 @@ def load_compressed_dataset(path, dataset_name):
         "adj_hotness": adj_hotness,
         "feat_hotness": feat_hotness,
     }
+
+    if with_valid:
+        graph_tensors["valid_idx"] = valid_idx
+    if with_test:
+        graph_tensors["test_idx"] = test_idx
 
     print("finish loading {}...".format(dataset_name))
 

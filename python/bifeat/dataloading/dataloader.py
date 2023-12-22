@@ -7,8 +7,9 @@ class SeedGenerator(object):
                  data: torch.Tensor,
                  batch_size: int,
                  shuffle: bool = False,
-                 drop_last: bool = False):
-        self.data = data.cuda()
+                 drop_last: bool = False,
+                 device="cuda"):
+        self.data = data.to(device)
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.drop_last = drop_last

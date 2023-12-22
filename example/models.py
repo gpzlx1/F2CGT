@@ -1,12 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import dgl
+import torch.distributed as dist
 import dgl.nn.pytorch as dglnn
-from dgl.dataloading import (
-    DataLoader,
-    MultiLayerFullNeighborSampler,
-)
+import bifeat
 import tqdm
 
 
@@ -35,42 +32,38 @@ class SAGE(nn.Module):
                 h = self.dropout(h)
         return h
 
-    def inference(self, g, device, batch_size):
-        """Conduct layer-wise inference to get all the node embeddings."""
-        feat = g.ndata["feat"]
-        sampler = MultiLayerFullNeighborSampler(1,
-                                                prefetch_node_feats=["feat"])
-        dataloader = DataLoader(
-            g,
-            torch.arange(g.num_nodes()).to(g.device),
-            sampler,
-            device=device,
-            batch_size=batch_size,
-            shuffle=False,
-            drop_last=False,
-            num_workers=0,
-        )
-        buffer_device = torch.device("cpu")
-        pin_memory = buffer_device != device
+    def inference(self, g, feature, batch_size):
+        """
+        Conduct layer-wise inference to get all the node embeddings.
+        Only support signle trainer now.
+        """
+        # full neighbor sampler
+        sampler = bifeat.cache.StructureCacheServer(g["indptr"],
+                                                    g["indices"], [0],
+                                                    pin_memory=False)
+        num_nodes = g["indptr"].shape[0] - 1
+        local_nodes = torch.arange(0, num_nodes)
+        dataloader = bifeat.dataloading.SeedGenerator(local_nodes,
+                                                      batch_size,
+                                                      shuffle=True)
 
         for l, layer in enumerate(self.layers):
-            y = torch.empty(
-                g.num_nodes(),
-                self.hid_size if l != len(self.layers) - 1 else self.out_size,
-                dtype=feat.dtype,
-                device=buffer_device,
-                pin_memory=pin_memory,
-            )
-            feat = feat.to(device)
-            for input_nodes, output_nodes, blocks in tqdm.tqdm(dataloader):
-                x = feat[input_nodes]
-                h = layer(blocks[0], x)  # len(blocks) = 1
+            y = torch.empty(num_nodes,
+                            self.n_hidden if l != len(self.layers) -
+                            1 else self.n_classes,
+                            dtype=torch.float32)
+            for nodes in tqdm.tqdm(dataloader):
+                src_nodes, dst_nodes, blocks = sampler.sample_neighbors(nodes)
+                if l == 0:
+                    x = feature[src_nodes]
+                else:
+                    x = feature[src_nodes.cpu()].cuda()
+                h = layer(blocks[0], x)
                 if l != len(self.layers) - 1:
                     h = F.relu(h)
                     h = self.dropout(h)
-                # by design, our output nodes are contiguous
-                y[output_nodes[0]:output_nodes[-1] + 1] = h.to(buffer_device)
-            feat = y
+                y[dst_nodes] = h.to("cpu")
+            feature = y
         return y
 
 

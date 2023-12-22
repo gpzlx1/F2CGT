@@ -5,3 +5,4 @@ build
 datasets
 dataset
 *.pyc
+*.log

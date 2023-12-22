@@ -7,8 +7,27 @@ import numpy as np
 import time
 import bifeat
 from load_dataset import load_compressed_dataset
-from models import SAGE
+from models import SAGE, compute_acc
 import argparse
+
+
+def evaluate(model, g, feature_loader, labels, val_nid, test_nid, batch_size):
+    """
+    Evaluate the model on the validation set specified by ``val_nid``.
+    g : The entire graph.
+    feature_loader : The feature server
+    labels : The labels of all the nodes.
+    val_nid : the node Ids for validation.
+    batch_size : Number of nodes to compute at the same time.
+    device : The GPU device to evaluate on.
+    """
+    model.eval()
+    with torch.no_grad():
+        pred = model.inference(g, feature_loader, batch_size)
+    model.train()
+    return compute_acc(pred[val_nid],
+                       labels[val_nid]), compute_acc(pred[test_nid],
+                                                     labels[test_nid])
 
 
 def get_cache_nids(data, args, mem_capacity):
@@ -186,6 +205,15 @@ def run(rank, world_size, data, args):
                 print("Rank {} builds cache time = {:.3f} sec".format(
                     rank, cache_toc - cache_tic))
 
+            if (it + 1) % args.log_every == 0:
+                acc = compute_acc(batch_pred, batch_labels)
+                gpu_mem_alloc = (torch.cuda.max_memory_allocated() /
+                                 1000000 if torch.cuda.is_available() else 0)
+                print("Part {} | Epoch {:05d} | Step {:05d} | Loss {:.4f} | "
+                      "Train Acc {:.4f} | GPU {:.1f} MB".format(
+                          rank, epoch, it + 1, loss.item(), acc.item(),
+                          gpu_mem_alloc))
+
         epoch_toc = time.time()
 
         for i in range(args.num_trainers):
@@ -220,6 +248,21 @@ def run(rank, world_size, data, args):
         backward_time_log.append(backward_time)
         update_time_log.append(update_time)
         epoch_time_log.append(epoch_toc - epoch_tic)
+
+        if (epoch + 1) % args.eval_every == 0:
+            tic = time.time()
+            val_acc, test_acc = evaluate(
+                model.module,
+                g,
+                feature_server,
+                g["labels"],
+                g["valid_idx"],
+                g["test_idx"],
+                args.batch_size_eval,
+            )
+            print("Part {}, Val Acc {:.4f}, Test Acc {:.4f}, time: {:.4f}".
+                  format(rank, val_acc, test_acc,
+                         time.time() - tic))
 
     avg_epoch_time = np.mean(epoch_time_log[2:])
     avg_sample_time = np.mean(sample_time_log[2:])

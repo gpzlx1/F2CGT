@@ -31,12 +31,21 @@ class CompressionManager(object):
         self.cache_path = cache_path
         self.shm_manager = shm_manager
 
-    def register(self, indptr, indices, train_seeds, labels, features):
+    def register(self,
+                 indptr,
+                 indices,
+                 train_seeds,
+                 labels,
+                 features,
+                 valid_idx=None,
+                 test_idx=None):
         self.indptr = indptr
         self.indices = indices
         self.train_seeds = train_seeds
         self.labels = labels
         self.features = features
+        self.valid_idx = valid_idx
+        self.test_idx = test_idx
 
         self.original_size = self.features.numel(
         ) * self.features.element_size()
@@ -114,6 +123,10 @@ class CompressionManager(object):
             self.labels[:] = self.labels[self.dst2src]
             self.adj_hotness[:] = self.adj_hotness[self.dst2src]
             self.feat_hotness[:] = self.feat_hotness[self.dst2src]
+            if self.valid_idx is not None:
+                self.valid_idx[:] = self.src2dst[self.valid_idx]
+            if self.test_idx is not None:
+                self.test_idx[:] = self.src2dst[self.test_idx]
 
             # recovery hotness
             self.hotness[self.train_seeds] -= max_hot
@@ -318,4 +331,11 @@ class CompressionManager(object):
                        os.path.join(self.cache_path, "adj_hotness.pt"))
             torch.save(self.feat_hotness,
                        os.path.join(self.cache_path, "feat_hotness.pt"))
+
+            if self.valid_idx is not None:
+                torch.save(self.valid_idx,
+                           os.path.join(self.cache_path, "valid_idx.pt"))
+            if self.test_idx is not None:
+                torch.save(self.test_idx,
+                           os.path.join(self.cache_path, "test_idx.pt"))
             print("Results saved to {}".format(self.cache_path))

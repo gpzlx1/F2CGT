@@ -211,7 +211,7 @@ class ShmManager(object):
     def release_shm_tensor(self, tensor_name):
         self._release_shm_tensor(tensor_name)
 
-    def load_dataset(self, with_feature=True):
+    def load_dataset(self, with_feature=True, with_valid=True, with_test=True):
         print("load {}...".format(self.dataset_name))
 
         meta_data = torch.load(os.path.join(self.dataset_path, "metadata.pt"))
@@ -241,6 +241,22 @@ class ShmManager(object):
             shm_indices.copy_(indices)
             shm_train_idx.copy_(train_idx)
 
+            if with_valid:
+                valid_idx = torch.load(
+                    os.path.join(self.dataset_path, "valid_idx.pt"))
+                shm_valid_idx = self.create_shm_tensor(
+                    self.dataset_name + "_shm_valid_idx", valid_idx.dtype,
+                    valid_idx.shape)
+                shm_valid_idx.copy_(valid_idx)
+
+            if with_test:
+                test_idx = torch.load(
+                    os.path.join(self.dataset_path, "test_idx.pt"))
+                shm_test_idx = self.create_shm_tensor(
+                    self.dataset_name + "_shm_test_idx", test_idx.dtype,
+                    test_idx.shape)
+                shm_test_idx.copy_(test_idx)
+
             if with_feature:
                 features = torch.load(
                     os.path.join(self.dataset_path, "features.pt"))
@@ -258,6 +274,12 @@ class ShmManager(object):
                 self.dataset_name + "_shm_indices", None, None)
             shm_train_idx = self.create_shm_tensor(
                 self.dataset_name + "_shm_train_idx", None, None)
+            if with_valid:
+                shm_valid_idx = self.create_shm_tensor(
+                    self.dataset_name + "_shm_valid_idx", None, None)
+            if with_test:
+                shm_test_idx = self.create_shm_tensor(
+                    self.dataset_name + "_shm_test_idx", None, None)
             if with_feature:
                 shm_features = self.create_shm_tensor(
                     self.dataset_name + "_shm_features", None, None)
@@ -266,8 +288,12 @@ class ShmManager(object):
             "labels": shm_labels,
             "indptr": shm_indptr,
             "indices": shm_indices,
-            "train_idx": shm_train_idx
+            "train_idx": shm_train_idx,
         }
+        if with_valid:
+            graph_tensors["valid_idx"] = shm_valid_idx
+        if with_test:
+            graph_tensors["test_idx"] = shm_test_idx
         if with_feature:
             graph_tensors["features"] = shm_features
 
