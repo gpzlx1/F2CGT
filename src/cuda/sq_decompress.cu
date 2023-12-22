@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <torch/script.h>
+#include "../common.h"
 #include "cuda_ops.h"
 
 #define WARP_SIZE 32
@@ -88,10 +89,12 @@ torch::Tensor sq_decompress(torch::Tensor codebook_indices,
   int64_t num_threads = 256;
   int64_t num_blocks = (num_threads + num_items - 1) / num_threads;
 
-  sq_decompress_kernel<float, int8_t><<<num_blocks, num_threads>>>(
-      output.data_ptr<float>(), compressed_features.data_ptr<int8_t>(),
-      input_dim, codebooks.data_ptr<float>(), codebook_dim,
-      codebook_indices.data_ptr<int64_t>(), feat_dim, num_items);
+  PG_INT_TYPE_SWITCH(compressed_features.dtype(), SrcType, {
+    sq_decompress_kernel<float, SrcType><<<num_blocks, num_threads>>>(
+        output.data_ptr<float>(), compressed_features.data_ptr<SrcType>(),
+        input_dim, codebooks.data_ptr<float>(), codebook_dim,
+        codebook_indices.data_ptr<int64_t>(), feat_dim, num_items);
+  });
 
   return output;
 }

@@ -40,6 +40,28 @@
     }                                                \
   } while (0);
 
+#define PG_INT_TYPE_SWITCH(val, IntType, ...)         \
+  do {                                                \
+    if ((val) == torch::kInt32) {                     \
+      typedef int32_t IntType;                        \
+      { __VA_ARGS__ }                                 \
+    } else if ((val) == torch::kInt64) {              \
+      typedef int64_t IntType;                        \
+      { __VA_ARGS__ }                                 \
+    } else if ((val) == torch::kInt16) {              \
+      typedef int16_t IntType;                        \
+      { __VA_ARGS__ }                                 \
+    } else if ((val) == torch::kInt8) {               \
+      typedef int8_t IntType;                         \
+      { __VA_ARGS__ }                                 \
+    } else if ((val) == torch::kUInt8) {              \
+      typedef uint8_t IntType;                        \
+      { __VA_ARGS__ }                                 \
+    } else {                                          \
+      LOG(FATAL) << "Int can only be int32 or int64"; \
+    }                                                 \
+  } while (0);
+
 #define PG_VALUE_TYPE_SWITCH(val, VType, ...)                                 \
   do {                                                                        \
     if ((val) == torch::kInt32) {                                             \
