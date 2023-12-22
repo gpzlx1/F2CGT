@@ -99,6 +99,7 @@ def process_papers100M(dataset_path, save_path):
     label_file = np.load(os.path.join(dataset_path, "raw/node-label.npz"))
     features = data_file["node_feat"]
     labels = label_file["node_label"]
+    labels[np.isnan(labels)] = 0
     edge_index = data_file["edge_index"]
     train_idx = pd.read_csv(os.path.join(dataset_path,
                                          'split/time/train.csv.gz'),
@@ -131,7 +132,7 @@ def process_papers100M(dataset_path, save_path):
         torch.from_numpy(features).float(),
         os.path.join(save_path, "features.pt"))
     torch.save(
-        torch.from_numpy(labels).float().squeeze(1),
+        torch.from_numpy(labels).long().squeeze(1),
         os.path.join(save_path, "labels.pt"))
     torch.save(
         torch.from_numpy(indptr).long(), os.path.join(save_path, "indptr.pt"))

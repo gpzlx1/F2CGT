@@ -5,7 +5,7 @@ from torch import distributed as dist
 import time
 import argparse
 """
-Usage: torchrun --nproc_per_node ${#gpus} example/run_compress.py [args]
+Usage: torchrun --nproc_per_node ${#gpus} example/preprocess_compress.py [args]
 """
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser("Partition builtin graphs")

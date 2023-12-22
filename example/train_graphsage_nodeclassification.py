@@ -140,7 +140,7 @@ def run(rank, world_size, data, args):
             num_inputs += frontier.shape[0]
             tic = time.time()
             batch_inputs = feature_server[frontier]
-            batch_labels = g["labels"][seeds.cpu()].cuda()
+            batch_labels = g["labels"][seeds.cpu()].long().cuda()
             if args.breakdown:
                 dist.barrier()
                 torch.cuda.synchronize()
