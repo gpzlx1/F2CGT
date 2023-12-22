@@ -42,11 +42,17 @@ class CompressionManager(object):
         ) * self.features.element_size()
 
     def presampling(self, fanouts, batch_size=512):
-        self.hotness = torch.zeros(self.indptr.numel() - 1,
-                                   device='cuda',
-                                   dtype=torch.float32)
+        self.adj_hotness = torch.zeros(self.indptr.numel() - 1,
+                                       device='cuda',
+                                       dtype=torch.float32)
+        self.feat_hotness = torch.zeros(self.indptr.numel() - 1,
+                                        device='cuda',
+                                        dtype=torch.float32)
 
-        sampler = StructureCacheServer(self.indptr, self.indices, fanouts)
+        sampler = StructureCacheServer(self.indptr,
+                                       self.indices,
+                                       fanouts,
+                                       pin_memory=False)
 
         rank = dist.get_rank()
         world_size = dist.get_world_size()
@@ -61,10 +67,14 @@ class CompressionManager(object):
         for it, seeds in enumerate(seeds_loader):
             frontier, _, blocks = sampler.sample_neighbors(seeds)
             for block in blocks:
-                self.hotness[block.dstdata[dgl.NID]] += 1
-            self.hotness[frontier] += 1
+                self.adj_hotness[block.dstdata[dgl.NID]] += 1
+            self.feat_hotness[frontier] += 1
 
-        dist.all_reduce(self.hotness, op=dist.ReduceOp.SUM)
+        dist.all_reduce(self.adj_hotness, op=dist.ReduceOp.SUM)
+        dist.all_reduce(self.feat_hotness, op=dist.ReduceOp.SUM)
+        self.hotness = self.adj_hotness + self.feat_hotness
+        self.adj_hotness = self.adj_hotness.cpu()
+        self.feat_hotness = self.feat_hotness.cpu()
 
     def graph_reorder(self):
         if self.shm_manager._is_chief:
@@ -102,6 +112,8 @@ class CompressionManager(object):
             self.indices[:] = new_indices
             self.train_seeds[:] = self.src2dst[self.train_seeds]
             self.labels[:] = self.labels[self.dst2src]
+            self.adj_hotness[:] = self.adj_hotness[self.dst2src]
+            self.feat_hotness[:] = self.feat_hotness[self.dst2src]
 
             # recovery hotness
             self.hotness[self.train_seeds] -= max_hot
@@ -302,4 +314,8 @@ class CompressionManager(object):
                                                   "indices.pt"))
             torch.save(self.train_seeds,
                        os.path.join(self.cache_path, "train_idx.pt"))
+            torch.save(self.adj_hotness,
+                       os.path.join(self.cache_path, "adj_hotness.pt"))
+            torch.save(self.feat_hotness,
+                       os.path.join(self.cache_path, "feat_hotness.pt"))
             print("Results saved to {}".format(self.cache_path))

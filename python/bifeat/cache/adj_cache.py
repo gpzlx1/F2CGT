@@ -6,14 +6,22 @@ import BiFeatLib as capi
 
 class StructureCacheServer:
 
-    def __init__(self, indptr, indices, fan_out, count_hit=False):
+    def __init__(self,
+                 indptr,
+                 indices,
+                 fan_out,
+                 count_hit=False,
+                 pin_memory=True):
         self.indptr = indptr
         self.indices = indices
         self._pin_indptr = not indptr.is_pinned
         self._pin_indices = not indices.is_pinned
-        if self._pin_indptr:
+        self._pin_memory = pin_memory
+
+        # if pin_memory is False, then indptr and indices must be pinned before.
+        # Otherwise, cuda illegal memory access will occur during sampling.
+        if pin_memory:
             capi._CAPI_pin_tensor(indptr)
-        if self._pin_indices:
             capi._CAPI_pin_tensor(indices)
 
         self.cached_indptr = None
@@ -25,7 +33,7 @@ class StructureCacheServer:
         self.cached_nids_in_gpu_hashed = None
 
         self.full_cached = False
-        self.no_cache = True
+        self.no_cached = True
 
         self._fan_out = fan_out
         self._count_hit = count_hit
@@ -34,9 +42,8 @@ class StructureCacheServer:
         self.hit_times = 0
 
     def __del__(self):
-        if self._pin_indptr:
+        if self._pin_memory:
             capi._CAPI_unpin_tensor(self.indptr)
-        if self._pin_indices:
             capi._CAPI_unpin_tensor(self.indices)
 
     def cache_data(self, cache_nids):
@@ -44,7 +51,7 @@ class StructureCacheServer:
 
         if cache_nids.shape[0] >= self.indptr.shape[0] - 1:
             self.full_cached = True
-            self.no_cache = False
+            self.no_cached = False
 
             self.cached_indptr = self.indptr.cuda(self.device_id)
             self.cached_indices = self.indices.cuda(self.device_id)
@@ -53,13 +60,15 @@ class StructureCacheServer:
             ) * self.indptr.numel()
             indices_cached_size = self.indices.element_size(
             ) * self.indices.numel()
+            hashmap_size = 0
 
         elif cache_nids.shape[0] <= 0:
-            self.no_cache = True
+            self.no_cached = True
             indptr_cached_size = 0
             indices_cached_size = 0
+            hashmap_size = 0
         else:
-            self.no_cache = False
+            self.no_cached = False
             cache_nids = cache_nids.cuda(self.device_id)
             self.cached_nids_hashed, self.cached_nids_in_gpu_hashed = capi._CAPI_create_hashmap(
                 cache_nids)
@@ -76,6 +85,11 @@ class StructureCacheServer:
             indices_cached_size = self.cached_indices.element_size(
             ) * self.cached_indices.numel()
 
+            hashmap_size = self.cached_nids_hashed.numel(
+            ) * self.cached_nids_hashed.element_size()
+            hashmap_size += self.cached_nids_in_gpu_hashed.numel(
+            ) * self.cached_nids_in_gpu_hashed.element_size()
+
         end = time.time()
 
         print("GPU {} takes {:.3f} s to cache structure data".format(
@@ -90,6 +104,8 @@ class StructureCacheServer:
                   self.device_id, indices_cached_size / 1024 / 1024 / 1024,
                   indices_cached_size /
                   (self.indices.element_size() * self.indices.numel())))
+        print("GPU {} Hashmap size = {:.3f} GB".format(
+            self.device_id, hashmap_size / 1024 / 1024 / 1024))
 
     def clear_cache(self):
         self.cached_indptr = None
@@ -99,7 +115,7 @@ class StructureCacheServer:
         self.cached_nids_in_gpu_hashed = None
 
         self.full_cached = False
-        self.no_cache = False
+        self.no_cached = False
 
         self.access_times = 0
         self.hit_times = 0
@@ -128,7 +144,7 @@ class StructureCacheServer:
                     seeds, self.cached_indptr, self.cached_indices, num_picks,
                     replace)
 
-            elif self.no_cache:
+            elif self.no_cached:
                 if self._count_hit:
                     self.access_times += seeds.shape[0]
                 coo_row, coo_col = capi._CAPI_cuda_sample_neighbors(

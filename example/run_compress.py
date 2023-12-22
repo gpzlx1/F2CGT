@@ -33,6 +33,10 @@ if __name__ == "__main__":
                            type=str,
                            default="25,10",
                            help="fanout for presampling")
+    argparser.add_argument("--batch-size",
+                           type=int,
+                           default=512,
+                           help="batch size for presampling")
     args = argparser.parse_args()
     print(args)
 

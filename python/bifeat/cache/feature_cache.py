@@ -31,6 +31,7 @@ class FeatureCacheServer:
             self.cached_feature = self.feature.cuda()
             cache_size = self.cached_feature.numel(
             ) * self.cached_feature.element_size()
+            hashmap_size = 0
 
         elif cache_nids.shape[0] > 0:
             self.cached_feature = self.feature[cache_nids].cuda()
@@ -39,9 +40,15 @@ class FeatureCacheServer:
             cache_size = self.cached_feature.numel(
             ) * self.cached_feature.element_size()
 
+            hashmap_size = self.hashmap_key.numel(
+            ) * self.hashmap_key.element_size()
+            hashmap_size += self.hashmap_value.numel(
+            ) * self.hashmap_value.element_size()
+
         else:
             self.no_cached = True
             cache_size = 0
+            hashmap_size = 0
 
         torch.cuda.synchronize()
         end = time.time()
@@ -52,6 +59,8 @@ class FeatureCacheServer:
                 torch.cuda.current_device(), end - start,
                 cache_size / 1024 / 1024 / 1024, cache_size /
                 (self.feature.element_size() * self.feature.numel())))
+        print("GPU {} Hashmap size = {:.3f} GB".format(
+            torch.cuda.current_device(), hashmap_size / 1024 / 1024 / 1024))
 
     def __getitem__(self, index):
         '''
@@ -174,9 +183,15 @@ class CompressedFeatureCacheServer:
             self.cached_part_size_list, dim=0)
         self.cached_partition_range = self.cached_partition_range.cuda()
 
+        hashmap_size = self.hash_key.numel() * self.hash_key.element_size()
+        hashmap_size += self.hash_value.numel() * self.hash_value.element_size(
+        )
+
         toc = time.time()
         print("GPU {} takes {:.3f} sec to cache all the feature partitions".
               format(torch.cuda.current_device(), toc - tic))
+        print("GPU {} Hashmap size = {:.3f} GB".format(
+            torch.cuda.current_device(), hashmap_size / 1024 / 1024 / 1024))
 
     def __getitem__(self, index):
         '''

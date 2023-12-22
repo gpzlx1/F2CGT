@@ -39,6 +39,8 @@ def load_compressed_dataset(path, dataset_name):
     indices = torch.load(os.path.join(path, "indices.pt"))
     train_idx = torch.load(os.path.join(path, "train_idx.pt"))
     features = torch.load(os.path.join(path, "compressed_features.pt"))
+    adj_hotness = torch.load(os.path.join(path, "adj_hotness.pt"))
+    feat_hotness = torch.load(os.path.join(path, "feat_hotness.pt"))
 
     codebooks = torch.load(os.path.join(path, "codebooks.pt"))
 
@@ -47,7 +49,9 @@ def load_compressed_dataset(path, dataset_name):
         "indptr": indptr,
         "indices": indices,
         "train_idx": train_idx,
-        "features": features
+        "features": features,
+        "adj_hotness": adj_hotness,
+        "feat_hotness": feat_hotness,
     }
 
     print("finish loading {}...".format(dataset_name))

@@ -14,7 +14,8 @@ def compute_adj_slope(indptr,
                       batch_size,
                       hotness,
                       step=0.05,
-                      num_epochs=10):
+                      num_epochs=10,
+                      pin_adj=False):
     seeds_loader = SeedGenerator(seeds, batch_size, shuffle=True)
     cache_rate = 0
     num_nodes = hotness.shape[0]
@@ -22,7 +23,11 @@ def compute_adj_slope(indptr,
 
     # warmup
     cached_nids = torch.tensor([])
-    sampler = StructureCacheServer(indptr, indices, fan_out, count_hit=True)
+    sampler = StructureCacheServer(indptr,
+                                   indices,
+                                   fan_out,
+                                   count_hit=True,
+                                   pin_memory=pin_adj)
     sampler.cache_data(cached_nids)
     for it, seeds in enumerate(seeds_loader):
         _ = sampler.sample_neighbors(seeds)
@@ -68,13 +73,18 @@ def compute_feat_slope(features,
                        fan_out,
                        batch_size,
                        step=0.2,
-                       num_epochs=5):
+                       num_epochs=5,
+                       pin_adj=False):
     idx = torch.argsort(hotness, descending=True).long()
     cache_rate = 0
     num_nodes = hotness.shape[0]
 
     seeds_loader = SeedGenerator(seeds, batch_size, shuffle=True)
-    sampler = StructureCacheServer(indptr, indices, fan_out, count_hit=True)
+    sampler = StructureCacheServer(indptr,
+                                   indices,
+                                   fan_out,
+                                   count_hit=True,
+                                   pin_memory=pin_adj)
     sampler.cache_data(torch.tensor([]))
 
     # warmup
@@ -120,12 +130,18 @@ def compute_feat_slope(features,
 
 
 def compute_feat_sapce(feat_dim, feat_dtype):
-    return feat_dim * dtype_sizeof(feat_dtype)
+    space = feat_dim * dtype_sizeof(feat_dtype)
+    # with hashmap size
+    space += 4 * (dtype_sizeof(torch.int64) + dtype_sizeof(torch.int32))
+    return space
 
 
 def compute_adj_space_tensor(indptr, indptr_dtype, indices_dtype):
     degree = indptr[1:] - indptr[:-1]
-    return degree * dtype_sizeof(indices_dtype) + dtype_sizeof(indptr_dtype)
+    space = degree * dtype_sizeof(indices_dtype) + dtype_sizeof(indptr_dtype)
+    # with hashmap size
+    space += 4 * (dtype_sizeof(torch.int64) + dtype_sizeof(torch.int32))
+    return space
 
 
 def cache_idx_select(
