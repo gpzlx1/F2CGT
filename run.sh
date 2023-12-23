@@ -1,0 +1,2 @@
+python3 example/train_graphsage_nodeclassification.py --num-epochs 20 --root /data/ogbn_products/compressed2/ --eval-every 1 | tee logs/2023-12-22-3090-ours-products-acc-sage-hidden256-2.log
+python3 example/train_gat_nodeclassification.py --num-epochs 20 --root /data/ogbn_products/compressed2/ --eval-every 1 | tee logs/2023-12-22-3090-ours-products-acc-gat-hidden32-heads8,8,1-2.log

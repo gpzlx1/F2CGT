@@ -11,8 +11,13 @@ from .utils import sq_compress, vq_compress, sq_decompress, vq_decompress
 
 class CompressionManager(object):
 
-    def __init__(self, ratios, methods, configs, cache_path,
-                 shm_manager: ShmManager):
+    def __init__(self,
+                 ratios,
+                 methods,
+                 configs,
+                 cache_path,
+                 shm_manager: ShmManager,
+                 preserve_valid_test=False):
         assert len(ratios) == len(methods)
         assert len(ratios) == len(configs)
         assert sum(ratios) == 1.0
@@ -30,6 +35,7 @@ class CompressionManager(object):
         self.configs = configs
         self.cache_path = cache_path
         self.shm_manager = shm_manager
+        self.preserve_valid_test = preserve_valid_test
 
     def register(self,
                  indptr,
@@ -49,6 +55,14 @@ class CompressionManager(object):
 
         self.original_size = self.features.numel(
         ) * self.features.element_size()
+
+        self.core_idx = []
+        self.core_idx.append(self.train_seeds)
+        if self.preserve_valid_test and self.valid_idx is not None:
+            self.core_idx.append(self.valid_idx)
+        if self.preserve_valid_test and self.test_idx is not None:
+            self.core_idx.append(self.test_idx)
+        self.core_idx = torch.cat(self.core_idx).unique()
 
     def presampling(self, fanouts, batch_size=512):
         self.adj_hotness = torch.zeros(self.indptr.numel() - 1,
@@ -90,7 +104,8 @@ class CompressionManager(object):
             assert self.hotness is not None
 
             max_hot = self.hotness.max()
-            self.hotness[self.train_seeds] += max_hot
+
+            self.hotness[self.core_idx] += max_hot
 
             self.hotness, dst2src = torch.sort(self.hotness, descending=True)
             self.dst2src = dst2src.cpu()
@@ -148,23 +163,29 @@ class CompressionManager(object):
         self.hotness = package[1]
 
     def compress(self):
-        num_train_idx = self.train_seeds.numel()
+        num_core_idx = self.core_idx.numel()
         num_parts = len(self.ratios)
         num_items = self.features.shape[0]
 
         part_size_list = []
 
         # compute part size
-        if num_train_idx > num_items * self.ratios[0]:
-            part_size_list.append(num_train_idx)
-            part_size_list.append(num_train_idx)
+        if num_core_idx >= num_items:
+            num_parts = 1
+            part_size_list.append(num_items)
+            self.methods = [self.methods[0]]
+            self.configs = [self.configs[0]]
+        elif num_core_idx > num_items * self.ratios[0]:
+            part_size_list.append(num_core_idx)
 
             new_ratios = self.ratios[1:]
-            new_ratios = new_ratios / sum(new_ratios)
-
+            new_ratios_sum = sum(new_ratios)
+            new_ratios = [ratio / new_ratios_sum for ratio in new_ratios]
+            num_left_items = num_items - num_core_idx
             for i in range(num_parts - 1):
-                part_size = int(num_items * new_ratios[i])
+                part_size = int(num_left_items * new_ratios[i])
                 part_size_list.append(part_size)
+
             part_size_list[-1] = num_items - sum(part_size_list[:-1])
 
         else:
