@@ -1,2 +1,4 @@
-python3 example/train_graphsage_nodeclassification.py --num-epochs 20 --root /data/ogbn_products/compressed2/ --eval-every 1 | tee logs/2023-12-22-3090-ours-products-acc-sage-hidden256-2.log
-python3 example/train_gat_nodeclassification.py --num-epochs 20 --root /data/ogbn_products/compressed2/ --eval-every 1 | tee logs/2023-12-22-3090-ours-products-acc-gat-hidden32-heads8,8,1-2.log
+# python3 example/train_graphsage_nodeclassification.py --num-epochs 20 --num-hidden 32 --dropout 0.2 --root /data/ogbn_products/compressed1/ --eval-every 1 | tee logs/2023-12-23-3090-ours-products-acc-sage-hidden32-dropout0.2-1.log
+# python3 example/train_graphsage_nodeclassification.py --num-epochs 20 --num-hidden 32 --dropout 0.2 --root /data/ogbn_products/compressed2/ --eval-every 1 | tee logs/2023-12-23-3090-ours-products-acc-sage-hidden32-dropout0.2-2.log
+python3 example/train_gat_nodeclassification.py --num-epochs 20 --num-hidden 16 --heads 4,4,1 --root /data/ogbn_products/compressed1/ --eval-every 1 | tee logs/2023-12-23-3090-ours-products-acc-gat-hidden16-heads4,4,1-1.log
+python3 example/train_gat_nodeclassification.py --num-epochs 20 --num-hidden 16 --heads 4,4,1 --root /data/ogbn_products/compressed2/ --eval-every 1 | tee logs/2023-12-23-3090-ours-products-acc-gat-hidden16-heads4,4,1-2.log

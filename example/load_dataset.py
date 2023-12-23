@@ -30,6 +30,7 @@ def load_dataset(path, dataset_name, with_feature=True):
 
 def load_compressed_dataset(path,
                             dataset_name,
+                            with_feature=True,
                             with_valid=True,
                             with_test=True):
     print("load {}...".format(dataset_name))
@@ -41,11 +42,14 @@ def load_compressed_dataset(path,
     indptr = torch.load(os.path.join(path, "indptr.pt"))
     indices = torch.load(os.path.join(path, "indices.pt"))
     train_idx = torch.load(os.path.join(path, "train_idx.pt"))
-    features = torch.load(os.path.join(path, "compressed_features.pt"))
+
     adj_hotness = torch.load(os.path.join(path, "adj_hotness.pt"))
     feat_hotness = torch.load(os.path.join(path, "feat_hotness.pt"))
 
     codebooks = torch.load(os.path.join(path, "codebooks.pt"))
+
+    if with_feature:
+        features = torch.load(os.path.join(path, "compressed_features.pt"))
 
     if with_valid:
         valid_idx = torch.load(os.path.join(path, "valid_idx.pt"))
@@ -58,11 +62,12 @@ def load_compressed_dataset(path,
         "indptr": indptr,
         "indices": indices,
         "train_idx": train_idx,
-        "features": features,
         "adj_hotness": adj_hotness,
         "feat_hotness": feat_hotness,
     }
 
+    if with_feature:
+        graph_tensors["features"] = features
     if with_valid:
         graph_tensors["valid_idx"] = valid_idx
     if with_test:

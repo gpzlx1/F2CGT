@@ -7,81 +7,11 @@ import numpy as np
 import time
 import bifeat
 from load_dataset import load_compressed_dataset
-from models import GAT, compute_acc
+from models import GAT, compute_acc, evaluate
+from preprocess_compute_slope import get_cache_nids
 import argparse
 
-
-def evaluate(model, g, feature_loader, labels, val_nid, test_nid, batch_size):
-    """
-    Evaluate the model on the validation set specified by ``val_nid``.
-    g : The entire graph.
-    feature_loader : The feature server
-    labels : The labels of all the nodes.
-    val_nid : the node Ids for validation.
-    batch_size : Number of nodes to compute at the same time.
-    device : The GPU device to evaluate on.
-    """
-    model.eval()
-    with torch.no_grad():
-        pred = model.inference(g, feature_loader, batch_size)
-    model.train()
-    return compute_acc(pred[val_nid],
-                       labels[val_nid]), compute_acc(pred[test_nid],
-                                                     labels[test_nid])
-
-
-def get_cache_nids(data, args, mem_capacity):
-    g, seeds, metadata = data
-    fan_out = [int(fanout) for fanout in args.fan_out.split(",")]
-
-    # compute adj slope
-    adj_slope = bifeat.cache.compute_adj_slope(g["indptr"],
-                                               g["indices"],
-                                               seeds,
-                                               fan_out,
-                                               args.batch_size,
-                                               g["adj_hotness"],
-                                               step=0.05,
-                                               num_epochs=10,
-                                               pin_adj=False)
-    adj_space_tensor = bifeat.cache.compute_adj_space_tensor(
-        g["indptr"], g["indptr"].dtype, g["indices"].dtype)
-
-    # compute feature slope with a fake feature
-    feat_slope = bifeat.cache.compute_feat_slope(torch.zeros(
-        (metadata["num_nodes"], metadata["feature_dim"]), dtype=torch.float32),
-                                                 g["feat_hotness"],
-                                                 g["indptr"],
-                                                 g["indices"],
-                                                 seeds,
-                                                 fan_out,
-                                                 batch_size=args.batch_size,
-                                                 step=0.2,
-                                                 num_epochs=5,
-                                                 pin_adj=False)
-    compressed_features = g["features"]
-    feat_hotness = g["feat_hotness"]
-    num_feat_parts = len(compressed_features)
-    feat_part_size = torch.tensor(metadata["part_size"], dtype=torch.long)
-    feat_part_range = torch.zeros(num_feat_parts + 1, dtype=torch.long)
-    feat_part_range[1:] = torch.cumsum(feat_part_size, dim=0)
-    feat_hotness_list = [None for _ in range(num_feat_parts)]
-    feat_space_list = [0 for _ in range(num_feat_parts)]
-    feat_slope_list = [0.0 for _ in range(num_feat_parts)]
-    for i in range(num_feat_parts):
-        feat_hotness_list[i] = feat_hotness[
-            feat_part_range[i]:feat_part_range[i + 1]]
-        feat_space_list[i] = bifeat.cache.compute_feat_sapce(
-            compressed_features[i].shape[1], compressed_features[i].dtype)
-        feat_slope_list[i] = feat_slope * compressed_features[i].shape[1]
-
-    feature_cache_nids_list, adj_cache_nids = bifeat.cache.cache_idx_select(
-        feat_hotness_list, g["adj_hotness"], feat_slope_list, adj_slope,
-        feat_space_list, adj_space_tensor, mem_capacity)
-    feature_cache_nids_list = [nids.cuda() for nids in feature_cache_nids_list]
-    adj_cache_nids = adj_cache_nids.cuda()
-
-    return feature_cache_nids_list, adj_cache_nids
+torch.manual_seed(25)
 
 
 def run(rank, world_size, data, args):
@@ -204,7 +134,7 @@ def run(rank, world_size, data, args):
                       format(rank, mem_capacity / 1024 / 1024 / 1024))
                 cache_tic = time.time()
                 feature_cache_nids_list, adj_cache_nids = get_cache_nids(
-                    (g, local_train_nids, metadata), args, mem_capacity)
+                    (g, metadata), args, mem_capacity)
                 torch.cuda.empty_cache()
                 feature_server.cache_data(feature_cache_nids_list)
                 sampler.cache_data(adj_cache_nids)
@@ -358,6 +288,9 @@ def run(rank, world_size, data, args):
 
 
 def main(args):
+    assert args.feat_slope is not None
+    assert args.adj_slope is not None
+
     g, metadata, codebooks = load_compressed_dataset(args.root, args.dataset)
     train_nids = g.pop("train_idx")
     train_nids = train_nids[torch.randperm(train_nids.shape[0])]
@@ -404,6 +337,8 @@ if __name__ == "__main__":
                            type=float,
                            default=1.0,
                            help="reserverd GPU memory size, unit: GB")
+    argparser.add_argument("--feat-slope", type=float, default=None)
+    argparser.add_argument("--adj-slope", type=float, default=None)
     args = argparser.parse_args()
     print(args)
     main(args)

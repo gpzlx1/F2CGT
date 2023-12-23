@@ -157,3 +157,22 @@ def compute_acc(pred, labels):
     """
     labels = labels.long()
     return (torch.argmax(pred, dim=1) == labels).float().sum() / len(pred)
+
+
+def evaluate(model, g, feature_loader, labels, val_nid, test_nid, batch_size):
+    """
+    Evaluate the model on the validation set specified by ``val_nid``.
+    g : The entire graph.
+    feature_loader : The feature server
+    labels : The labels of all the nodes.
+    val_nid : the node Ids for validation.
+    batch_size : Number of nodes to compute at the same time.
+    device : The GPU device to evaluate on.
+    """
+    model.eval()
+    with torch.no_grad():
+        pred = model.inference(g, feature_loader, batch_size)
+    model.train()
+    return compute_acc(pred[val_nid],
+                       labels[val_nid]), compute_acc(pred[test_nid],
+                                                     labels[test_nid])
