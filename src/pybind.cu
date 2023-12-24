@@ -2,6 +2,7 @@
 #include <torch/script.h>
 #include "cpu/omp.h"
 #include "cuda/cuda_ops.h"
+#include "cuda/hashmap.h"
 #include "pin_memory.h"
 #include "shm/shared_memory.h"
 
@@ -9,6 +10,11 @@ namespace py = pybind11;
 using namespace bifeat;
 
 PYBIND11_MODULE(BiFeatLib, m) {
+  py::class_<CacheHashMap<int64_t, int32_t>>(m, "CacheHashMap")
+      .def(py::init<>())
+      .def("insert", &CacheHashMap<int64_t, int32_t>::insert)
+      .def("find", &CacheHashMap<int64_t, int32_t>::find);
+
   m.def("create_shared_mem", &shm::create_shared_mem, py::arg("name"),
         py::arg("size"), py::arg("pin_memory") = true)
       .def("open_shared_mem", &shm::open_shared_mem, py::arg("name"),

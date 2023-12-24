@@ -39,6 +39,19 @@ message(STATUS "find_pybind11.py output: ${PYBIND_CMAKE_DIR}")
 set(pybind11_DIR ${PYBIND_CMAKE_DIR})
 find_package(pybind11 REQUIRED)
 
+# cuCollections
+include(cmake/CPM.cmake)
+CPMAddPackage(
+  NAME cuco
+  GITHUB_REPOSITORY NVIDIA/cuCollections
+  GIT_TAG dev
+  OPTIONS
+     "BUILD_TESTS OFF"
+     "BUILD_BENCHMARKS OFF"
+     "BUILD_EXAMPLES OFF"
+)
+list(APPEND BiFeat_EXTERNAL_LIB cuco)
+
 # set openmp
 include(FindOpenMP)
 if(OPENMP_FOUND)
@@ -51,7 +64,7 @@ message(STATUS "Build with OpenMP")
 file(GLOB BiFeat_SRC
   src/cuda/*.cu
   src/cuda/*.cc
-  src/*.cc
+  src/*.cu
 )
 pybind11_add_module(BiFeatLib ${BiFeat_SRC})
 set_target_properties(BiFeatLib PROPERTIES CUDA_SEPARABLE_COMPILATION ON)

@@ -1,10 +1,56 @@
 #ifndef PG_HASHMAP_H_
 #define PG_HASHMAP_H_
 
+#include <thrust/device_ptr.h>
+#include <thrust/device_vector.h>
+#include <thrust/for_each.h>
+#include <thrust/iterator/counting_iterator.h>
+#include <torch/script.h>
+#include <cuco/dynamic_map.cuh>
 #include "../common.h"
 #include "atomic.h"
 
+#define INIT_CAPACITY 10
+
 namespace bifeat {
+
+template <typename KeyType, typename ValueType>
+class CacheHashMap {
+  using PairType = cuco::pair<KeyType, ValueType>;
+
+ private:
+  cuco::dynamic_map<KeyType, ValueType> map{static_cast<size_t>(INIT_CAPACITY),
+                                            cuco::empty_key<KeyType>{-1},
+                                            cuco::empty_value<ValueType>{-1}};
+
+ public:
+  CacheHashMap() {}
+  void insert(torch::Tensor key_nids) {
+    ValueType num_keys = key_nids.numel();
+    thrust::device_vector<PairType> pairs(num_keys);
+    using it = thrust::counting_iterator<ValueType>;
+    thrust::for_each(it(0), it(num_keys),
+                     [in = key_nids.data_ptr<KeyType>(),
+                      out = pairs.begin()] __device__(ValueType i) mutable {
+                       out[i] = PairType({in[i], i});
+                     });
+    map.insert(pairs.begin(), pairs.end());
+  }
+  torch::Tensor find(torch::Tensor key_nids) {
+    torch::Tensor result =
+        torch::full_like(key_nids, -1,
+                         torch::TensorOptions()
+                             .dtype(torch::CppTypeToScalarType<ValueType>())
+                             .device(torch::kCUDA));
+    ValueType num_keys = key_nids.numel();
+    thrust::device_ptr<KeyType> keys(
+        static_cast<KeyType *>(key_nids.data_ptr<KeyType>()));
+    thrust::device_ptr<ValueType> values(
+        static_cast<ValueType *>(result.data_ptr<ValueType>()));
+    map.find(keys, keys + num_keys, values);
+    return result;
+  }
+};
 
 template <typename IdType>
 struct Hashmap {

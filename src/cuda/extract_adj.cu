@@ -6,7 +6,6 @@
 #include "../common.h"
 #include "cub_function.h"
 #include "cuda_ops.h"
-#include "hashmap.h"
 
 #define BLOCK_SIZE 128
 
