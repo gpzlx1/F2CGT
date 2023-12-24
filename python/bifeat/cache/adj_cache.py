@@ -29,8 +29,7 @@ class StructureCacheServer:
 
         self.device_id = torch.cuda.current_device()
 
-        self.cached_nids_hashed = None
-        self.cached_nids_in_gpu_hashed = None
+        self._hashmap = None
 
         self.full_cached = False
         self.no_cached = True
@@ -60,18 +59,18 @@ class StructureCacheServer:
             ) * self.indptr.numel()
             indices_cached_size = self.indices.element_size(
             ) * self.indices.numel()
-            hashmap_size = 0
+            # hashmap_size = 0
 
         elif cache_nids.shape[0] <= 0:
             self.no_cached = True
             indptr_cached_size = 0
             indices_cached_size = 0
-            hashmap_size = 0
+            # hashmap_size = 0
         else:
             self.no_cached = False
             cache_nids = cache_nids.cuda(self.device_id)
-            self.cached_nids_hashed, self.cached_nids_in_gpu_hashed = capi._CAPI_create_hashmap(
-                cache_nids)
+            self._hashmap = capi.CacheHashMap()
+            self._hashmap.insert(cache_nids)
 
             self.cached_indptr = capi._CAPI_get_sub_indptr(
                 cache_nids, self.indptr).cuda(self.device_id)
@@ -85,10 +84,10 @@ class StructureCacheServer:
             indices_cached_size = self.cached_indices.element_size(
             ) * self.cached_indices.numel()
 
-            hashmap_size = self.cached_nids_hashed.numel(
-            ) * self.cached_nids_hashed.element_size()
-            hashmap_size += self.cached_nids_in_gpu_hashed.numel(
-            ) * self.cached_nids_in_gpu_hashed.element_size()
+            # hashmap_size = self.cached_nids_hashed.numel(
+            # ) * self.cached_nids_hashed.element_size()
+            # hashmap_size += self.cached_nids_in_gpu_hashed.numel(
+            # ) * self.cached_nids_in_gpu_hashed.element_size()
 
         end = time.time()
 
@@ -104,15 +103,14 @@ class StructureCacheServer:
                   self.device_id, indices_cached_size / 1024 / 1024 / 1024,
                   indices_cached_size /
                   (self.indices.element_size() * self.indices.numel())))
-        print("GPU {} Hashmap size = {:.3f} GB".format(
-            self.device_id, hashmap_size / 1024 / 1024 / 1024))
+        # print("GPU {} Hashmap size = {:.3f} GB".format(
+        #     self.device_id, hashmap_size / 1024 / 1024 / 1024))
 
     def clear_cache(self):
         self.cached_indptr = None
         self.cached_indices = None
 
-        self.cached_nids_hashed = None
-        self.cached_nids_in_gpu_hashed = None
+        self._hashmap = None
 
         self.full_cached = False
         self.no_cached = False
@@ -151,15 +149,14 @@ class StructureCacheServer:
                     seeds, self.indptr, self.indices, num_picks, replace)
 
             else:
+                idx_in_cache = self._hashmap.find(seeds)
                 if self._count_hit:
                     self.access_times += seeds.shape[0]
-                    self.hit_times += capi._CAPI_count_cached_nids(
-                        seeds, self.cached_nids_hashed,
-                        self.cached_nids_in_gpu_hashed)
+                    self.hit_times += torch.sum(idx_in_cache != -1).item()
                 coo_row, coo_col = capi._CAPI_cuda_sample_neighbors_with_caching(
                     seeds, self.cached_indptr, self.indptr,
-                    self.cached_indices, self.indices, self.cached_nids_hashed,
-                    self.cached_nids_in_gpu_hashed, num_picks, replace)
+                    self.cached_indices, self.indices, idx_in_cache, num_picks,
+                    replace)
 
             frontier, (coo_row, coo_col) = capi._CAPI_cuda_tensor_relabel(
                 [seeds, coo_col], [coo_row, coo_col])

@@ -8,8 +8,6 @@ class FeatureCacheServer:
     def __init__(self, feature, count_hit=False):
         self.feature = feature
         self.cached_feature = None
-        self.hashmap_key = None
-        self.hashmap_value = None
         self.full_cached = False
         self.no_cached = False
 
@@ -19,6 +17,8 @@ class FeatureCacheServer:
         self.hit_times = 0
 
         self._count_hit = count_hit
+
+        self._hashmap = None
 
     def __del__(self):
         capi._CAPI_unpin_tensor(self.feature)
@@ -31,24 +31,24 @@ class FeatureCacheServer:
             self.cached_feature = self.feature.cuda()
             cache_size = self.cached_feature.numel(
             ) * self.cached_feature.element_size()
-            hashmap_size = 0
+            # hashmap_size = 0
 
         elif cache_nids.shape[0] > 0:
-            self.cached_feature = self.feature[cache_nids].cuda()
-            self.hashmap_key, self.hashmap_value = capi._CAPI_create_hashmap(
-                cache_nids.cuda())
+            self.cached_feature = self.feature[cache_nids.cpu()].cuda()
+            self._hashmap = capi.CacheHashMap()
+            self._hashmap.insert(cache_nids.cuda())
             cache_size = self.cached_feature.numel(
             ) * self.cached_feature.element_size()
 
-            hashmap_size = self.hashmap_key.numel(
-            ) * self.hashmap_key.element_size()
-            hashmap_size += self.hashmap_value.numel(
-            ) * self.hashmap_value.element_size()
+            # hashmap_size = self.hashmap_key.numel(
+            # ) * self.hashmap_key.element_size()
+            # hashmap_size += self.hashmap_value.numel(
+            # ) * self.hashmap_value.element_size()
 
         else:
             self.no_cached = True
             cache_size = 0
-            hashmap_size = 0
+            # hashmap_size = 0
 
         torch.cuda.synchronize()
         end = time.time()
@@ -59,8 +59,8 @@ class FeatureCacheServer:
                 torch.cuda.current_device(), end - start,
                 cache_size / 1024 / 1024 / 1024, cache_size /
                 (self.feature.element_size() * self.feature.numel())))
-        print("GPU {} Hashmap size = {:.3f} GB".format(
-            torch.cuda.current_device(), hashmap_size / 1024 / 1024 / 1024))
+        # print("GPU {} Hashmap size = {:.3f} GB".format(
+        #     torch.cuda.current_device(), hashmap_size / 1024 / 1024 / 1024))
 
     def __getitem__(self, index):
         '''
@@ -77,24 +77,21 @@ class FeatureCacheServer:
                 self.access_times += index.shape[0]
             return capi._CAPI_fetch_feature_data(self.feature, index)
         else:
+            idx_in_cache = self._hashmap.find(index)
             if self._count_hit:
                 self.access_times += index.shape[0]
-                self.hit_times += capi._CAPI_count_cached_nids(
-                    index, self.hashmap_key, self.hashmap_value)
+                self.hit_times += torch.sum(idx_in_cache != -1).item()
             return capi._CAPI_fetch_feature_data_with_caching(
                 self.feature,
                 self.cached_feature,
-                self.hashmap_key,
-                self.hashmap_value,
+                idx_in_cache,
                 index,
             )
 
     def clear_cache(self):
         self.cached_feature = None
 
-        self.hashmap_key = None
-        self.hashmap_value = None
-
+        self._hashmap = None
         self.full_cached = False
         self.no_cached = False
 
@@ -133,6 +130,7 @@ class CompressedFeatureCacheServer:
             capi._CAPI_pin_tensor(feature)
 
         self.no_cached = True
+        self._hashmap = None
 
     def __del__(self):
         for feature in self.feature_partitions:
@@ -172,8 +170,8 @@ class CompressedFeatureCacheServer:
                                   self.feature_partitions[i].numel())))
 
         total_global_cache_nids = torch.cat(total_global_cache_nids).cuda()
-        self.hash_key, self.hash_value = capi._CAPI_create_hashmap(
-            total_global_cache_nids)
+        self._hashmap = capi.CacheHashMap()
+        self._hashmap.insert(total_global_cache_nids)
 
         self.cached_part_size_list = torch.tensor(
             self.cached_part_size_list).long()
@@ -183,15 +181,15 @@ class CompressedFeatureCacheServer:
             self.cached_part_size_list, dim=0)
         self.cached_partition_range = self.cached_partition_range.cuda()
 
-        hashmap_size = self.hash_key.numel() * self.hash_key.element_size()
-        hashmap_size += self.hash_value.numel() * self.hash_value.element_size(
-        )
+        # hashmap_size = self.hash_key.numel() * self.hash_key.element_size()
+        # hashmap_size += self.hash_value.numel() * self.hash_value.element_size(
+        # )
 
         toc = time.time()
         print("GPU {} takes {:.3f} sec to cache all the feature partitions".
               format(torch.cuda.current_device(), toc - tic))
-        print("GPU {} Hashmap size = {:.3f} GB".format(
-            torch.cuda.current_device(), hashmap_size / 1024 / 1024 / 1024))
+        # print("GPU {} Hashmap size = {:.3f} GB".format(
+        #     torch.cuda.current_device(), hashmap_size / 1024 / 1024 / 1024))
 
     def __getitem__(self, index):
         '''
@@ -206,8 +204,7 @@ class CompressedFeatureCacheServer:
                                       right=True) - 1
 
         if not self.no_cached:
-            searched_index = capi._CAPI_search_hashmap(self.hash_key,
-                                                       self.hash_value, index)
+            searched_index = self._hashmap.find(index)
             cached_mask = searched_index != -1
 
         for i in range(self.num_parts):
@@ -217,7 +214,8 @@ class CompressedFeatureCacheServer:
                 local_cpu_src_index = index[
                     local_mask & (~cached_mask)] - self.partition_range[i]
                 local_gpu_src_index = searched_index[
-                    local_mask & cached_mask] - self.cached_partition_range[i]
+                    local_mask
+                    & cached_mask].long() - self.cached_partition_range[i]
 
                 local_cached_mask = cached_mask[local_mask]
                 local_cpu_dst_index = torch.nonzero(
@@ -263,5 +261,5 @@ class CompressedFeatureCacheServer:
         self.cached_feature_partitions = [None for _ in range(self.num_parts)]
         self.cached_part_size_list = [0 for _ in range(self.num_parts)]
         self.cached_partition_range = None
-        self.hash_key, self.hash_value = None, None
+        self._hashmap = None
         self.no_cached = True

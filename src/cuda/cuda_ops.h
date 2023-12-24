@@ -9,10 +9,10 @@ std::tuple<torch::Tensor, torch::Tensor> CreateHashMapTensorCUDA(
 torch::Tensor SearchHashMapCUDA(torch::Tensor hash_key, torch::Tensor hash_val,
                                 torch::Tensor input_key);
 
-torch::Tensor FeatureFetchDataWithCachingCUDA(
-    torch::Tensor cpu_data, torch::Tensor gpu_data, torch::Tensor nid,
-    torch::Tensor hashed_key_tensor, torch::Tensor hashed_value_tensor);
-
+torch::Tensor FeatureFetchDataWithCachingCUDA(torch::Tensor cpu_data,
+                                              torch::Tensor gpu_data,
+                                              torch::Tensor cache_index,
+                                              torch::Tensor nid);
 torch::Tensor FeatureFetchDataCUDA(torch::Tensor data, torch::Tensor nid);
 
 void CUDAIndexFetch(torch::Tensor src, torch::Tensor src_index,
@@ -24,8 +24,7 @@ std::tuple<torch::Tensor, torch::Tensor> RowWiseSamplingUniformCUDA(
 std::tuple<torch::Tensor, torch::Tensor> RowWiseSamplingUniformWithCachingCUDA(
     torch::Tensor seeds, torch::Tensor gpu_indptr, torch::Tensor cpu_indptr,
     torch::Tensor gpu_indices, torch::Tensor cpu_indices,
-    torch::Tensor orig_nids_hashed, torch::Tensor gpu_nids_hashed,
-    int64_t num_picks, bool replace);
+    torch::Tensor cache_index, int64_t num_picks, bool replace);
 std::tuple<torch::Tensor, std::vector<torch::Tensor>> TensorRelabelCUDA(
     std::vector<torch::Tensor> mapping_tensors,
     std::vector<torch::Tensor> requiring_relabel_tensors);
