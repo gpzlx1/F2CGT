@@ -22,8 +22,13 @@ if __name__ == "__main__":
                            type=int,
                            default=2,
                            help="number of gpus participated in the compress")
-    argparser.add_argument("--ratios", type=str, default="0.1,0.9")
-    argparser.add_argument("--methods", type=str, default="sq,vq")
+    argparser.add_argument(
+        "--methods",
+        type=str,
+        default="sq,vq",
+        help=
+        "compression methods, first one for core nodes (first level), second one for all nodes (second level)"
+    )
     argparser.add_argument(
         "--configs",
         type=str,
@@ -68,10 +73,8 @@ if __name__ == "__main__":
     torch.cuda.synchronize()
     print("Load dataset time: {:.3f} sec".format(time.time() - begin))
 
-    ratios = [float(ratio) for ratio in args.ratios.split(",")]
     methods = [method for method in args.methods.split(",")]
     compression_manager = bifeat.CompressionManager(
-        ratios=ratios,
         methods=methods,
         configs=eval(args.configs),
         cache_path=args.save_path,

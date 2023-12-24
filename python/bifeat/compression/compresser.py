@@ -6,21 +6,19 @@ import os
 from ..shm import ShmManager
 from ..cache import StructureCacheServer
 from ..dataloading import SeedGenerator
-from .utils import sq_compress, vq_compress, sq_decompress, vq_decompress
+from .utils import sq_compress, vq_compress
 
 
 class CompressionManager(object):
 
     def __init__(self,
-                 ratios,
                  methods,
                  configs,
                  cache_path,
                  shm_manager: ShmManager,
                  preserve_valid_test=False):
-        assert len(ratios) == len(methods)
-        assert len(ratios) == len(configs)
-        assert sum(ratios) == 1.0
+        assert len(methods) == 2
+        assert len(configs) == 2
         for method, config in zip(methods, configs):
             if method == 'sq':
                 assert 'target_bits' in config
@@ -30,7 +28,6 @@ class CompressionManager(object):
             else:
                 raise ValueError
 
-        self.ratios = ratios
         self.methods = methods
         self.configs = configs
         self.cache_path = cache_path
@@ -162,179 +159,79 @@ class CompressionManager(object):
         self.dst2src = package[0]
         self.hotness = package[1]
 
+        self.core_idx = []
+        self.core_idx.append(self.train_seeds)
+        if self.preserve_valid_test and self.valid_idx is not None:
+            self.core_idx.append(self.valid_idx)
+        if self.preserve_valid_test and self.test_idx is not None:
+            self.core_idx.append(self.test_idx)
+        self.core_idx = torch.cat(self.core_idx).unique()
+
     def compress(self):
-        num_core_idx = self.core_idx.numel()
-        num_parts = len(self.ratios)
-        num_items = self.features.shape[0]
-
-        part_size_list = []
-
-        # compute part size
-        if num_core_idx >= num_items:
-            num_parts = 1
-            part_size_list.append(num_items)
-            self.methods = [self.methods[0]]
-            self.configs = [self.configs[0]]
-        elif num_core_idx > num_items * self.ratios[0]:
-            part_size_list.append(num_core_idx)
-
-            new_ratios = self.ratios[1:]
-            new_ratios_sum = sum(new_ratios)
-            new_ratios = [ratio / new_ratios_sum for ratio in new_ratios]
-            num_left_items = num_items - num_core_idx
-            for i in range(num_parts - 1):
-                part_size = int(num_left_items * new_ratios[i])
-                part_size_list.append(part_size)
-
-            part_size_list[-1] = num_items - sum(part_size_list[:-1])
-
-        else:
-            for i in range(num_parts):
-                part_size = int(num_items * self.ratios[i])
-                part_size_list.append(part_size)
-            part_size_list[-1] = num_items - sum(part_size_list[:-1])
-
-        self.part_size_list = part_size_list
-
-        # begin compress
-        world_size = dist.get_world_size()
+        features_size = self.features.shape[0]
+        world_size = dist.get_world_size() - 1
         rank = dist.get_rank()
-        codebooks = []
-        compressed_features = []
-        for i in range(num_parts):
-            features_size = part_size_list[i]
+
+        if rank != world_size:
             each_gpu_size = (features_size + world_size - 1) // world_size
             begin = rank * each_gpu_size
             end = (rank + 1) * each_gpu_size
 
-            for j in range(i):
-                begin += part_size_list[j]
-                end += part_size_list[j]
-
-            if self.methods[i] == 'sq':
+            if self.methods[1] == 'sq':
                 compressed_feature, codebook = sq_compress(
                     self.features[self.dst2src[begin:end]],
-                    self.configs[i]['target_bits'], 'cuda')
-            elif self.methods[i] == 'vq':
+                    self.configs[1]['target_bits'], 'cuda')
+            elif self.methods[1] == 'vq':
                 compressed_feature, codebook = vq_compress(
                     self.features[self.dst2src[begin:end]],
-                    self.configs[i]['width'], self.configs[i]['length'],
+                    self.configs[1]['width'], self.configs[1]['length'],
                     'cuda')
             else:
                 raise ValueError
+        else:
+            if self.methods[0] == 'sq':
+                self.compressed_core_feature, self.core_codebook = sq_compress(
+                    self.features[self.core_idx],
+                    self.configs[0]['target_bits'], 'cuda')
+            elif self.methods[0] == 'vq':
+                self.compressed_core_feature, self.core_codebook = vq_compress(
+                    self.features[self.core_idx], self.configs[0]['width'],
+                    self.configs[0]['length'], 'cuda')
+            else:
+                raise ValueError
+            compressed_feature, codebook = None, None
 
-            codebooks.append(codebook)
-            compressed_features.append(compressed_feature)
+        root = world_size
+        if rank == root:
+            output_codebook = [None for _ in range(world_size + 1)]
+            output_feature = [None for _ in range(world_size + 1)]
+        dist.gather_object(codebook, output_codebook if rank == root else None,
+                           root)
+        dist.gather_object(compressed_feature,
+                           output_feature if rank == root else None, root)
+        if rank == root:
+            self.codebooks = torch.cat(
+                [value.unsqueeze(0) for value in output_codebook[:-1]], dim=0)
+            self.compressed_features = torch.cat(output_feature[:-1], dim=0)
 
-        # root ranks gather results
-        roots = [
-            i for i in range(world_size)
-            if i % dist.get_world_size(self.shm_manager._local_group) == 0
-        ]
-
-        for root in roots:
-            if rank == root:
-                self.codebooks = [None] * num_parts
-                self.compressed_features = [None] * num_parts
-            for i in range(num_parts):
-                if rank == root:
-                    output_codebooks = [None for _ in range(world_size)]
-                    output_features = [None for _ in range(world_size)]
-                dist.gather_object(codebooks[i],
-                                   output_codebooks if rank == root else None,
-                                   root)
-                dist.gather_object(compressed_features[i],
-                                   output_features if rank == root else None,
-                                   root)
-                if rank == root:
-                    full_codebooks = torch.cat(
-                        [value.unsqueeze(0) for value in output_codebooks],
-                        dim=0)
-                    self.codebooks[i] = full_codebooks
-                    full_features = torch.cat(output_features, dim=0)
-                    self.compressed_features[i] = full_features
-
-        # compute compressed size and compression ratio
-        if self.shm_manager._is_chief:
-            self.compressed_size = 0
-            for i in range(num_parts):
-                self.compressed_size += self.compressed_features[i].numel(
-                ) * self.compressed_features[i].element_size()
-
+            self.compressed_size = self.compressed_features.numel(
+            ) * self.compressed_features.element_size()
             print(
                 "compressed size: {:.3f} GB, compression ratio: {:.1f}".format(
                     self.compressed_size / 1024 / 1024 / 1024,
                     self.original_size / self.compressed_size))
 
-    def decompress_old(self, idx):
-        output_tensor = torch.empty((idx.numel(), self.features.shape[1]),
-                                    dtype=self.features.dtype,
-                                    device='cuda')
-        part_indices = torch.searchsorted(
-            self.partition_range, idx, right=True) - 1
-        local_part_indices = idx - self.partition_range[part_indices]
-        local_codebook_indices = local_part_indices // self.chunk_size[
-            part_indices]
-        self.feat_dim = self.features.shape[1]
-
-        for i in range(idx.numel()):
-            part_index = part_indices[i]
-            local_part_index = local_part_indices[i]
-            local_codebook_index = local_codebook_indices[i]
-
-            if self.methods[part_index] == 'sq':
-                decompressed_feature = sq_decompress(
-                    self.compressed_features[part_index][local_part_index],
-                    self.feat_dim,
-                    self.codebooks[part_index][local_codebook_index],
-                )
-            elif self.methods[part_index] == 'vq':
-                decompressed_feature = vq_decompress(
-                    self.compressed_features[part_index]
-                    [local_part_index].unsqueeze(0), self.feat_dim,
-                    self.codebooks[part_index][local_codebook_index])
-
-            output_tensor[i] = decompressed_feature
-
-        return output_tensor
-
-    def decompress(self, idx):
-        output_tensor = torch.empty((idx.numel(), self.features.shape[1]),
-                                    dtype=self.features.dtype,
-                                    device='cuda')
-        part_indices = torch.searchsorted(
-            self.partition_range, idx, right=True) - 1
-        local_part_indices = idx - self.partition_range[part_indices]
-        local_codebook_indices = local_part_indices // self.chunk_size[
-            part_indices]
-        self.feat_dim = self.features.shape[1]
-
-        for i in range(len(self.part_size_list)):
-            part_index = (part_indices == i).nonzero().flatten()
-            if part_index.numel() > 0:
-                local_part_index = local_part_indices[part_index]
-                local_codebook_index = local_codebook_indices[part_index].cuda(
-                )
-
-                if self.methods[i] == 'sq':
-                    decompressed_feature = capi._CAPI_sq_decompress(
-                        local_codebook_index,
-                        self.compressed_features[i][local_part_index].cuda(),
-                        self.codebooks[i].cuda(), self.feat_dim)
-                elif self.methods[i] == 'vq':
-                    decompressed_feature = capi._CAPI_vq_decompress(
-                        local_codebook_index,
-                        self.compressed_features[i][local_part_index].cuda(),
-                        self.codebooks[i].cuda(), self.feat_dim)
-
-                output_tensor[part_index] = decompressed_feature
-
-        return output_tensor
+            self.core_compressed_size = self.compressed_core_feature.numel(
+            ) * self.compressed_core_feature.element_size()
+            self.core_original_size = self.original_size / features_size * self.core_idx.shape[
+                0]
+            print("core compressed size: {:.3f} GB, compression ratio: {:.1f}".
+                  format(self.core_compressed_size / 1024 / 1024 / 1024,
+                         self.core_original_size / self.core_compressed_size))
 
     def save_data(self):
-        if self.shm_manager._is_chief:
+        if dist.get_rank() == dist.get_world_size() - 1:
             metadata = self.shm_manager.graph_meta_data
-            metadata["part_size"] = self.part_size_list
             metadata["methods"] = self.methods
             torch.save(self.shm_manager.graph_meta_data,
                        os.path.join(self.cache_path, "metadata.pt"))
@@ -352,6 +249,14 @@ class CompressionManager(object):
                        os.path.join(self.cache_path, "adj_hotness.pt"))
             torch.save(self.feat_hotness,
                        os.path.join(self.cache_path, "feat_hotness.pt"))
+
+            torch.save(
+                self.compressed_core_feature,
+                os.path.join(self.cache_path, "compressed_core_features.pt"))
+            torch.save(self.core_codebook,
+                       os.path.join(self.cache_path, "core_codebooks.pt"))
+            torch.save(self.core_idx,
+                       os.path.join(self.cache_path, "core_idx.pt"))
 
             if self.valid_idx is not None:
                 torch.save(self.valid_idx,
