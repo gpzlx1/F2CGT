@@ -3,6 +3,7 @@ import torch.distributed as dist
 import time
 import bifeat
 import argparse
+from bifeat.shm import dtype_sizeof
 from load_dataset import load_compressed_dataset
 
 torch.manual_seed(25)
@@ -26,7 +27,8 @@ def get_cache_nids(data, args, mem_capacity):
             feat_part_range[i]:feat_part_range[i + 1]]
         feat_space_list[i] = bifeat.cache.compute_feat_sapce(
             compressed_features[i].shape[1], compressed_features[i].dtype)
-        feat_slope_list[i] = args.feat_slope * compressed_features[i].shape[1]
+        feat_slope_list[i] = args.feat_slope / 4 * dtype_sizeof(
+            compressed_features[i].dtype) * compressed_features[i].shape[1]
 
     feature_cache_nids_list, adj_cache_nids = bifeat.cache.cache_idx_select(
         feat_hotness_list, g["adj_hotness"], feat_slope_list, args.adj_slope,

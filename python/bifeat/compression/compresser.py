@@ -199,6 +199,7 @@ class CompressionManager(object):
                     self.configs[0]['length'], 'cuda')
             else:
                 raise ValueError
+            self.core_codebook = torch.unsqueeze(self.core_codebook, 0)
             compressed_feature, codebook = None, None
 
         root = world_size
