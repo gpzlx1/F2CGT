@@ -55,7 +55,7 @@ class SAGE(nn.Module):
             for nodes in tqdm.tqdm(dataloader):
                 src_nodes, dst_nodes, blocks = sampler.sample_neighbors(nodes)
                 if l == 0:
-                    x = feature[src_nodes]
+                    x = feature[src_nodes, 0]
                 else:
                     x = feature[src_nodes.cpu()].cuda()
                 h = layer(blocks[0], x)
@@ -138,7 +138,7 @@ class GAT(nn.Module):
             for nodes in tqdm.tqdm(dataloader):
                 src_nodes, dst_nodes, blocks = sampler.sample_neighbors(nodes)
                 if l == 0:
-                    x = feature[src_nodes]
+                    x = feature[src_nodes, 0]
                 else:
                     x = feature[src_nodes.cpu()].cuda()
                 h = layer(blocks[0], x)

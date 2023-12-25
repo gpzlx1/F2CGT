@@ -35,9 +35,11 @@ def run(rank, world_size, data, args):
                                                 fan_out)
     feature_decompresser = bifeat.compression.Decompresser(
         metadata["feature_dim"], codebooks, metadata["methods"],
-        metadata["part_size"])
-    feature_server = bifeat.cache.CompressedFeatureCacheServer(
-        g["features"], feature_decompresser)
+        [g["core_idx"].shape[0], metadata["num_nodes"]])
+    feature_server = bifeat.cache.FeatureLoadServer(g["core_features"],
+                                                    g["core_idx"],
+                                                    g["features"],
+                                                    feature_decompresser)
     dataloader = bifeat.dataloading.SeedGenerator(local_train_nids,
                                                   args.batch_size,
                                                   shuffle=True)
@@ -95,7 +97,7 @@ def run(rank, world_size, data, args):
             num_seeds += seeds.shape[0]
             num_inputs += frontier.shape[0]
             tic = time.time()
-            batch_inputs = feature_server[frontier]
+            batch_inputs = feature_server[frontier, seeds.shape[0]]
             batch_labels = g["labels"][seeds.cpu()].long().cuda()
             if args.breakdown:
                 dist.barrier()
@@ -129,14 +131,15 @@ def run(rank, world_size, data, args):
                 mem_capacity = torch.cuda.mem_get_info(
                     torch.cuda.current_device(
                     ))[1] - torch.cuda.max_memory_allocated(
-                    ) - args.reserved_mem * 1024 * 1024 * 1024
+                    ) - args.reserved_mem * 1024 * 1024 * 1024 - g[
+                        "core_idx"].shape[0] * 12 * 4
                 print("Rank {} builds cache, GPU mem capacity = {:.3f} GB".
                       format(rank, mem_capacity / 1024 / 1024 / 1024))
                 cache_tic = time.time()
                 feature_cache_nids_list, adj_cache_nids = get_cache_nids(
                     (g, metadata), args, mem_capacity)
                 torch.cuda.empty_cache()
-                feature_server.cache_data(feature_cache_nids_list)
+                feature_server.cache_data(feature_cache_nids_list[0])
                 sampler.cache_data(adj_cache_nids)
                 cache_toc = time.time()
                 print("Rank {} builds cache time = {:.3f} sec".format(

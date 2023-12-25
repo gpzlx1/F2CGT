@@ -125,7 +125,7 @@ class FeatureLoadServer:
         capi._CAPI_pin_tensor(self._compressed_feature)
         capi._CAPI_pin_tensor(self._core_compressed_feature)
 
-        self._full_cached = True
+        self._full_cached = False
         self.no_cached = True
 
         self._core_hashmap_key, self._core_hashmap_value = capi._CAPI_create_hashmap(

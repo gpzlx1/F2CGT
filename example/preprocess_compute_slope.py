@@ -13,10 +13,10 @@ def get_cache_nids(data, args, mem_capacity):
     g, metadata = data
     adj_space_tensor = bifeat.cache.compute_adj_space_tensor(
         g["indptr"], g["indptr"].dtype, g["indices"].dtype)
-    compressed_features = g["features"]
+    compressed_features = [g["features"]]
     feat_hotness = g["feat_hotness"]
     num_feat_parts = len(compressed_features)
-    feat_part_size = torch.tensor(metadata["part_size"], dtype=torch.long)
+    feat_part_size = torch.tensor([metadata["num_nodes"]], dtype=torch.long)
     feat_part_range = torch.zeros(num_feat_parts + 1, dtype=torch.long)
     feat_part_range[1:] = torch.cumsum(feat_part_size, dim=0)
     feat_hotness_list = [None for _ in range(num_feat_parts)]
