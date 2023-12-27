@@ -3,7 +3,7 @@ import dgl
 import BiFeatLib as capi
 import torch.distributed as dist
 import os
-from ..shm import ShmManager
+from ..shm import ShmManager, dtype_sizeof
 from ..cache import StructureCacheServer
 from ..dataloading import SeedGenerator
 from .utils import sq_compress, vq_compress
@@ -11,7 +11,13 @@ from .utils import sq_compress, vq_compress
 
 class CompressionManager(object):
 
-    def __init__(self, methods, configs, cache_path, shm_manager: ShmManager):
+    def __init__(self,
+                 methods,
+                 configs,
+                 cache_path,
+                 shm_manager: ShmManager,
+                 sample_sizes=[100000, 100000],
+                 compress_batch_sizes=[1000000, 1000000]):
         assert len(methods) == 2
         assert len(configs) == 2
         for method, config in zip(methods, configs):
@@ -27,6 +33,8 @@ class CompressionManager(object):
         self.configs = configs
         self.cache_path = cache_path
         self.shm_manager = shm_manager
+        self.sample_sizes = sample_sizes
+        self.compress_batch_sizes = compress_batch_sizes
 
     def register(self,
                  indptr,
@@ -36,7 +44,9 @@ class CompressionManager(object):
                  features,
                  core_idx,
                  valid_idx=None,
-                 test_idx=None):
+                 test_idx=None,
+                 fake_feat_dim=None,
+                 fake_feat_dtype=None):
         self.indptr = indptr
         self.indices = indices
         self.train_seeds = train_seeds
@@ -46,8 +56,16 @@ class CompressionManager(object):
         self.test_idx = test_idx
         self.core_idx = core_idx
 
-        self.original_size = self.features.numel(
-        ) * self.features.element_size()
+        if self.features is None:
+            assert fake_feat_dim is not None
+            assert fake_feat_dtype is not None
+            self.original_size = (
+                indptr.shape[0] -
+                1) * fake_feat_dim * dtype_sizeof(fake_feat_dtype)
+            self.fake_feat_dim = fake_feat_dim
+        else:
+            self.original_size = self.features.numel(
+            ) * self.features.element_size()
 
         self.original_graph_size = 0
         self.original_graph_size += indptr.numel() * indptr.element_size()
@@ -55,7 +73,7 @@ class CompressionManager(object):
         self.original_graph_size += train_seeds.numel(
         ) * train_seeds.element_size()
         self.original_graph_size += labels.numel() * labels.element_size()
-        self.original_graph_size += features.numel() * features.element_size()
+        self.original_graph_size += self.original_size
         if valid_idx is not None:
             self.original_graph_size += valid_idx.numel(
             ) * valid_idx.element_size()
@@ -163,35 +181,81 @@ class CompressionManager(object):
         self.hotness = package[1]
 
     def compress(self):
-        features_size = self.features.shape[0]
+        features_size = self.indptr.shape[0] - 1
         world_size = dist.get_world_size() - 1
         rank = dist.get_rank()
 
         if rank != world_size:
             each_gpu_size = (features_size + world_size - 1) // world_size
             begin = rank * each_gpu_size
-            end = (rank + 1) * each_gpu_size
+            end = min((rank + 1) * each_gpu_size, features_size)
 
             if self.methods[1] == 'sq':
-                compressed_feature, codebook = sq_compress(
-                    self.features[self.dst2src[begin:end]],
-                    self.configs[1]['target_bits'], 'cuda')
+                if self.features is not None:
+                    compressed_feature, codebook = sq_compress(
+                        self.features[self.dst2src[begin:end]],
+                        self.configs[1]['target_bits'], 'cuda',
+                        self.sample_sizes[1], self.compress_batch_sizes[1])
+                else:
+                    compressed_feature, codebook = sq_compress(
+                        None,
+                        self.configs[1]['target_bits'],
+                        'cuda',
+                        self.sample_sizes[1],
+                        self.compress_batch_sizes[1],
+                        fake_feat_items=end - begin,
+                        fake_feat_dim=self.fake_feat_dim)
             elif self.methods[1] == 'vq':
-                compressed_feature, codebook = vq_compress(
-                    self.features[self.dst2src[begin:end]],
-                    self.configs[1]['width'], self.configs[1]['length'],
-                    'cuda')
+                if self.features is not None:
+                    compressed_feature, codebook = vq_compress(
+                        self.features[self.dst2src[begin:end]],
+                        self.configs[1]['width'], self.configs[1]['length'],
+                        'cuda', self.sample_sizes[1],
+                        self.compress_batch_sizes[1])
+                else:
+                    compressed_feature, codebook = vq_compress(
+                        None,
+                        self.configs[1]['width'],
+                        self.configs[1]['length'],
+                        'cuda',
+                        self.sample_sizes[1],
+                        self.compress_batch_sizes[1],
+                        fake_feat_items=end - begin,
+                        fake_feat_dim=self.fake_feat_dim)
             else:
                 raise ValueError
         else:
             if self.methods[0] == 'sq':
-                self.compressed_core_feature, self.core_codebook = sq_compress(
-                    self.features[self.core_idx],
-                    self.configs[0]['target_bits'], 'cuda')
+                if self.features is not None:
+                    self.compressed_core_feature, self.core_codebook = sq_compress(
+                        self.features[self.core_idx],
+                        self.configs[0]['target_bits'], 'cuda',
+                        self.sample_sizes[0], self.compress_batch_sizes[0])
+                else:
+                    self.compressed_core_feature, self.core_codebook = sq_compress(
+                        None,
+                        self.configs[0]['target_bits'],
+                        'cuda',
+                        self.sample_sizes[0],
+                        self.compress_batch_sizes[0],
+                        fake_feat_items=self.core_idx.shape[0],
+                        fake_feat_dim=self.fake_feat_dim)
             elif self.methods[0] == 'vq':
-                self.compressed_core_feature, self.core_codebook = vq_compress(
-                    self.features[self.core_idx], self.configs[0]['width'],
-                    self.configs[0]['length'], 'cuda')
+                if self.features is not None:
+                    self.compressed_core_feature, self.core_codebook = vq_compress(
+                        self.features[self.core_idx], self.configs[0]['width'],
+                        self.configs[0]['length'], 'cuda',
+                        self.sample_sizes[0], self.compress_batch_sizes[0])
+                else:
+                    self.compressed_core_feature, self.core_codebook = vq_compress(
+                        None,
+                        self.configs[0]['width'],
+                        self.configs[0]['length'],
+                        'cuda',
+                        self.sample_sizes[0],
+                        self.compress_batch_sizes[0],
+                        fake_feat_items=self.core_idx.shape[0],
+                        fake_feat_dim=self.fake_feat_dim)
             else:
                 raise ValueError
             self.core_codebook = torch.unsqueeze(self.core_codebook, 0)

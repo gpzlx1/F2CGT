@@ -6,10 +6,24 @@ from .packbits import packbits, unpackbits
 from cuml import KMeans
 
 
-def sq_compress(tensor, target_bits, device):
+def sq_compress(tensor,
+                target_bits,
+                device,
+                sample_size=10_0000,
+                compress_batch_size=100_0000,
+                fake_feat_items=0,
+                fake_feat_dim=0):
     codebook = None
-    num_items = tensor.shape[0]
-    feat_dim = tensor.shape[1]
+    if tensor is None:
+        assert fake_feat_items > 0
+        assert fake_feat_dim > 0
+        num_items = fake_feat_items
+        feat_dim = fake_feat_dim
+        fake_feat = True
+    else:
+        fake_feat = False
+        num_items = tensor.shape[0]
+        feat_dim = tensor.shape[1]
 
     if target_bits <= 8:
         dtype = torch.int8
@@ -28,9 +42,14 @@ def sq_compress(tensor, target_bits, device):
     drange = 2**(target_bits - 1)
     epsilon = 1e-5
 
-    perm = torch.randperm(num_items)
-    sample_size = num_items // 10 if num_items // 10 >= 10_0000 else 10_0000
-    sample = tensor[perm[:sample_size]]
+    if fake_feat:
+        sample = torch.ones((sample_size, feat_dim),
+                            dtype=torch.float32,
+                            device="cuda")
+    else:
+        perm = torch.randperm(num_items)
+        sample_size = num_items // 10 if num_items // 10 >= sample_size else sample_size
+        sample = tensor[perm[:sample_size]]
 
     fmin = max(np.percentile(np.abs(sample), 0.5), epsilon)
     fmax = max(np.percentile(np.abs(sample), 99.5), 2 * epsilon)
@@ -61,11 +80,16 @@ def sq_compress(tensor, target_bits, device):
 
     compressed_tensor = torch.empty((num_items, tfeat_dim), dtype=dtype)
 
-    compress_batch_size = 100_0000 if num_items > 100_0000 else num_items
+    compress_batch_size = compress_batch_size if num_items > compress_batch_size else num_items
     for start in tqdm.trange(0, num_items, compress_batch_size):
         end = min(num_items, start + compress_batch_size)
-
-        tensor_ = tensor[start:end].to(device).to(torch.float32)
+        if fake_feat:
+            tensor_ = torch.ones(
+                (min(compress_batch_size, end - start), feat_dim),
+                dtype=torch.float32,
+                device="cuda")
+        else:
+            tensor_ = tensor[start:end].to(device).to(torch.float32)
         sign = torch.sign(tensor_)
         if drange == 1:
             tensor_ = torch.where(sign <= 0, 0, 1)
@@ -125,9 +149,22 @@ def sq_decompress(compressed_tensor, feat_dim, codebook):
     return result
 
 
-def vq_compress(tensor, width, length, device):
-    num_items = tensor.shape[0]
-    feat_dim = tensor.shape[1]
+def vq_compress(tensor,
+                width,
+                length,
+                device,
+                sample_size=10_0000,
+                compress_batch_size=100_0000,
+                fake_feat_items=0,
+                fake_feat_dim=0):
+    if fake_feat_items > 0 and fake_feat_dim > 0:
+        num_items = fake_feat_items
+        feat_dim = fake_feat_dim
+        fake_feat = True
+    else:
+        fake_feat = False
+        num_items = tensor.shape[0]
+        feat_dim = tensor.shape[1]
     num_parts = (feat_dim + width - 1) // width
 
     codebooks = torch.zeros((num_parts, length, width))
@@ -139,9 +176,14 @@ def vq_compress(tensor, width, length, device):
     else:
         dtype = torch.int32
 
-    perm = torch.randperm(num_items)
-    sample_size = num_items // 10 if num_items // 10 >= 10_0000 else 10_0000
-    sample = tensor[perm[:sample_size]].to(device)
+    if fake_feat:
+        sample = torch.ones((sample_size, feat_dim),
+                            dtype=torch.float32,
+                            device="cuda")
+    else:
+        perm = torch.randperm(num_items)
+        sample_size = num_items // 10 if num_items // 10 >= sample_size else sample_size
+        sample = tensor[perm[:sample_size]].to(device)
 
     print("generate codebooks:")
     kmeans_list = [KMeans(n_clusters=length) for _ in range(num_parts)]
@@ -153,11 +195,17 @@ def vq_compress(tensor, width, length, device):
         del X
 
     cluster_ids = torch.empty((num_items, num_parts), dtype=dtype)
-    compress_batch_size = 100_0000 if num_items > 100_0000 else num_items
+    compress_batch_size = compress_batch_size if num_items > compress_batch_size else num_items
     for step in tqdm.trange(0, num_items, compress_batch_size):
         start = step
-        end = step + compress_batch_size
-        tensor_ = tensor[start:end].to(device).to(torch.float32)
+        end = min(step + compress_batch_size, num_items)
+        if fake_feat:
+            tensor_ = torch.ones(
+                (min(compress_batch_size, end - start), feat_dim),
+                dtype=torch.float32,
+                device="cuda")
+        else:
+            tensor_ = tensor[start:end].to(device).to(torch.float32)
 
         for j in range(num_parts):
             X = tensor_[:, j * width:(j + 1) * width]
