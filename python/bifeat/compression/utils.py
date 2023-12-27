@@ -43,9 +43,7 @@ def sq_compress(tensor,
     epsilon = 1e-5
 
     if fake_feat:
-        sample = torch.ones((sample_size, feat_dim),
-                            dtype=torch.float32,
-                            device="cuda")
+        sample = torch.ones((sample_size, feat_dim), dtype=torch.float32)
     else:
         perm = torch.randperm(num_items)
         sample_size = num_items // 10 if num_items // 10 >= sample_size else sample_size

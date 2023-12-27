@@ -78,14 +78,20 @@ if __name__ == "__main__":
         graph_tensors, meta_data = shm_manager.load_dataset(with_feature=True,
                                                             with_valid=False,
                                                             with_test=False)
+        fake_feat_dim = None
+        fake_feat_dtype = None
     elif args.dataset == "mag240m":
         graph_tensors, meta_data = shm_manager.load_dataset(with_feature=False,
                                                             with_valid=True,
                                                             with_test=True)
+        fake_feat_dim = meta_data["feature_dim"]
+        fake_feat_dtype = torch.float16
     else:
         graph_tensors, meta_data = shm_manager.load_dataset(with_feature=True,
                                                             with_valid=True,
                                                             with_test=True)
+        fake_feat_dim = None
+        fake_feat_dtype = None
     torch.cuda.synchronize()
     print("Load dataset time: {:.3f} sec".format(time.time() - begin))
 
@@ -106,16 +112,17 @@ if __name__ == "__main__":
     test = graph_tensors["test_idx"] if "test_idx" in graph_tensors else None
     features = graph_tensors[
         "features"] if "features" in graph_tensors else None
-    compression_manager.register(
-        graph_tensors['indptr'],
-        graph_tensors['indices'],
-        graph_tensors['train_idx'],
-        graph_tensors['labels'],
-        features,
-        graph_tensors['core_idx'],
-        valid,
-        test,
-    )
+
+    compression_manager.register(graph_tensors['indptr'],
+                                 graph_tensors['indices'],
+                                 graph_tensors['train_idx'],
+                                 graph_tensors['labels'],
+                                 features,
+                                 graph_tensors['core_idx'],
+                                 valid,
+                                 test,
+                                 fake_feat_dim=fake_feat_dim,
+                                 fake_feat_dtype=fake_feat_dtype)
 
     begin = time.time()
     fan_out = [int(fanout) for fanout in args.fan_out.split(",")]
