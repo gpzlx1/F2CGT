@@ -32,40 +32,6 @@ class SAGE(nn.Module):
                 h = self.dropout(h)
         return h
 
-    def inference(self, g, feature, batch_size):
-        """
-        Conduct layer-wise inference to get all the node embeddings.
-        Only support signle trainer now.
-        """
-        # full neighbor sampler
-        sampler = bifeat.cache.StructureCacheServer(g["indptr"],
-                                                    g["indices"], [0],
-                                                    pin_memory=False)
-        num_nodes = g["indptr"].shape[0] - 1
-        local_nodes = torch.arange(0, num_nodes)
-        dataloader = bifeat.dataloading.SeedGenerator(local_nodes,
-                                                      batch_size,
-                                                      shuffle=False)
-
-        for l, layer in enumerate(self.layers):
-            y = torch.empty(num_nodes,
-                            self.n_hidden if l != len(self.layers) -
-                            1 else self.n_classes,
-                            dtype=torch.float32)
-            for nodes in tqdm.tqdm(dataloader):
-                src_nodes, dst_nodes, blocks = sampler.sample_neighbors(nodes)
-                if l == 0:
-                    x = feature[src_nodes, 0]
-                else:
-                    x = feature[src_nodes.cpu()].cuda()
-                h = layer(blocks[0], x)
-                if l != len(self.layers) - 1:
-                    h = self.activation(h)
-                    h = self.dropout(h)
-                y[dst_nodes] = h.to("cpu")
-            feature = y
-        return y
-
 
 class GAT(nn.Module):
 
@@ -111,45 +77,6 @@ class GAT(nn.Module):
                 h = h.flatten(1)
         return h
 
-    def inference(self, g, feature, batch_size):
-        """
-        Conduct layer-wise inference to get all the node embeddings.
-        Only support signle trainer now.
-        """
-        # full neighbor sampler
-        sampler = bifeat.cache.StructureCacheServer(g["indptr"],
-                                                    g["indices"], [0],
-                                                    pin_memory=False)
-        num_nodes = g["indptr"].shape[0] - 1
-        local_nodes = torch.arange(0, num_nodes)
-        dataloader = bifeat.dataloading.SeedGenerator(local_nodes,
-                                                      batch_size,
-                                                      shuffle=False)
-
-        for l, layer in enumerate(self.layers):
-            if l == len(self.layers) - 1:
-                y = torch.empty(num_nodes,
-                                self.n_classes * self.n_heads[l],
-                                dtype=torch.float32)
-            else:
-                y = torch.empty(num_nodes,
-                                self.n_hidden * self.n_heads[l],
-                                dtype=torch.float32)
-            for nodes in tqdm.tqdm(dataloader):
-                src_nodes, dst_nodes, blocks = sampler.sample_neighbors(nodes)
-                if l == 0:
-                    x = feature[src_nodes, 0]
-                else:
-                    x = feature[src_nodes.cpu()].cuda()
-                h = layer(blocks[0], x)
-                if l == self.n_layers - 1:
-                    h = h.mean(1)
-                else:
-                    h = h.flatten(1)
-                y[dst_nodes] = h.to("cpu")
-            feature = y
-        return y
-
 
 def compute_acc(pred, labels):
     """
@@ -159,20 +86,23 @@ def compute_acc(pred, labels):
     return (torch.argmax(pred, dim=1) == labels).float().sum() / len(pred)
 
 
-def evaluate(model, g, feature_loader, labels, val_nid, test_nid, batch_size):
-    """
-    Evaluate the model on the validation set specified by ``val_nid``.
-    g : The entire graph.
-    feature_loader : The feature server
-    labels : The labels of all the nodes.
-    val_nid : the node Ids for validation.
-    batch_size : Number of nodes to compute at the same time.
-    device : The GPU device to evaluate on.
-    """
+def evaluate(model, g, target_nids, feature, fan_out, batch_size):
     model.eval()
-    with torch.no_grad():
-        pred = model.inference(g, feature_loader, batch_size)
-    model.train()
-    return compute_acc(pred[val_nid],
-                       labels[val_nid]), compute_acc(pred[test_nid],
-                                                     labels[test_nid])
+    acc = 0
+    num_iters = 0
+    sampler = bifeat.cache.StructureCacheServer(g["indptr"],
+                                                g["indices"],
+                                                fan_out,
+                                                pin_memory=False)
+    dataloader = bifeat.dataloading.SeedGenerator(target_nids,
+                                                  batch_size,
+                                                  shuffle=True)
+    for seed_nids in tqdm.tqdm(dataloader):
+        frontier, seeds, blocks = sampler.sample_neighbors(seed_nids)
+        batch_inputs = feature[frontier, seed_nids.shape[0]]
+        batch_labels = g["labels"][seeds.cpu()].long().cuda()
+        batch_pred = model(blocks, batch_inputs)
+        acc += compute_acc(batch_pred, batch_labels).item()
+        num_iters += 1
+    acc = acc / num_iters
+    return acc

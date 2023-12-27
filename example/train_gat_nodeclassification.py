@@ -30,6 +30,20 @@ def run(rank, world_size, data, args):
     local_train_nids = train_nids[rank * train_part_size:(rank + 1) *
                                   train_part_size]
     fan_out = [int(fanout) for fanout in args.fan_out.split(",")]
+    if "valid_idx" in g:
+        val_fan_out = [int(fanout) for fanout in args.val_fan_out.split(",")]
+        assert len(fan_out) == len(val_fan_out)
+        val_part_size = (g["valid_idx"].shape[0] + world_size -
+                         1) // world_size
+        local_val_nids = g["valid_idx"][rank * val_part_size:(rank + 1) *
+                                        val_part_size]
+    if "test_idx" in g:
+        test_fan_out = [int(fanout) for fanout in args.test_fan_out.split(",")]
+        assert len(fan_out) == len(test_fan_out)
+        test_part_size = (g["test_idx"].shape[0] + world_size -
+                          1) // world_size
+        local_test_nids = g["test_idx"][rank * test_part_size:(rank + 1) *
+                                        test_part_size]
 
     sampler = bifeat.cache.StructureCacheServer(g["indptr"], g["indices"],
                                                 fan_out)
@@ -196,16 +210,12 @@ def run(rank, world_size, data, args):
         epoch_time_log.append(epoch_toc - epoch_tic)
 
         if (epoch + 1) % args.eval_every == 0:
+            model.eval()
             tic = time.time()
-            val_acc, test_acc = evaluate(
-                model.module,
-                g,
-                feature_server,
-                g["labels"],
-                g["valid_idx"],
-                g["test_idx"],
-                args.batch_size_eval,
-            )
+            val_acc = evaluate(model, g, local_val_nids, feature_server,
+                               val_fan_out, args.val_batch_size)
+            test_acc = evaluate(model, g, local_test_nids, feature_server,
+                                test_fan_out, args.test_batch_size)
             print("Part {}, Val Acc {:.4f}, Test Acc {:.4f}, time: {:.4f}".
                   format(rank, val_acc, test_acc,
                          time.time() - tic))
@@ -297,6 +307,11 @@ def main(args):
     g, metadata, codebooks = load_compressed_dataset(args.root, args.dataset)
     train_nids = g.pop("train_idx")
     train_nids = train_nids[torch.randperm(train_nids.shape[0])]
+    if "valid_idx" in g:
+        g["valid_idx"] = g["valid_idx"][torch.randperm(
+            g["valid_idx"].shape[0])]
+    if "test_idx" in g:
+        g["test_idx"] = g["test_idx"][torch.randperm(g["test_idx"].shape[0])]
     data = g, train_nids, metadata, codebooks
 
     import torch.multiprocessing as mp
@@ -326,10 +341,13 @@ if __name__ == "__main__":
     )
     argparser.add_argument("--lr", type=float, default=0.003)
     argparser.add_argument("--batch-size", type=int, default=1024)
-    argparser.add_argument("--batch-size-eval", type=int, default=100000)
+    argparser.add_argument("--val-batch-size", type=int, default=512)
+    argparser.add_argument("--test-batch-size", type=int, default=512)
     argparser.add_argument("--log-every", type=int, default=20)
     argparser.add_argument("--eval-every", type=int, default=5)
     argparser.add_argument("--fan-out", type=str, default="5,10,15")
+    argparser.add_argument("--val-fan-out", type=str, default="100,100,100")
+    argparser.add_argument("--test-fan-out", type=str, default="100,100,100")
     argparser.add_argument("--num-hidden", type=int, default=32)
     argparser.add_argument("--heads", type=str, default="8,8,1")
     argparser.add_argument("--feat-dropout", type=float, default=0.1)
