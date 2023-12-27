@@ -86,6 +86,7 @@ if __name__ == "__main__":
         graph_tensors['train_idx'],
         graph_tensors['labels'],
         graph_tensors['features'],
+        graph_tensors['core_idx'],
         valid,
         test,
     )
