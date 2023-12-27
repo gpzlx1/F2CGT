@@ -241,6 +241,9 @@ class ShmManager(object):
             shm_indices.copy_(indices)
             shm_train_idx.copy_(train_idx)
 
+            core_idx = []
+            core_idx.append(train_idx)
+
             if with_valid:
                 valid_idx = torch.load(
                     os.path.join(self.dataset_path, "valid_idx.pt"))
@@ -248,6 +251,7 @@ class ShmManager(object):
                     self.dataset_name + "_shm_valid_idx", valid_idx.dtype,
                     valid_idx.shape)
                 shm_valid_idx.copy_(valid_idx)
+                core_idx.append(valid_idx)
 
             if with_test:
                 test_idx = torch.load(
@@ -256,6 +260,13 @@ class ShmManager(object):
                     self.dataset_name + "_shm_test_idx", test_idx.dtype,
                     test_idx.shape)
                 shm_test_idx.copy_(test_idx)
+                core_idx.append(test_idx)
+
+            core_idx = torch.cat(core_idx).unique()
+            shm_core_idx = self.create_shm_tensor(
+                self.dataset_name + "_shm_core_idx", core_idx.dtype,
+                core_idx.shape)
+            shm_core_idx.copy_(core_idx)
 
             if with_feature:
                 features = torch.load(
@@ -280,6 +291,8 @@ class ShmManager(object):
             if with_test:
                 shm_test_idx = self.create_shm_tensor(
                     self.dataset_name + "_shm_test_idx", None, None)
+            shm_core_idx = self.create_shm_tensor(
+                self.dataset_name + "_shm_core_idx", None, None)
             if with_feature:
                 shm_features = self.create_shm_tensor(
                     self.dataset_name + "_shm_features", None, None)
@@ -289,6 +302,7 @@ class ShmManager(object):
             "indptr": shm_indptr,
             "indices": shm_indices,
             "train_idx": shm_train_idx,
+            "core_idx": shm_core_idx,
         }
         if with_valid:
             graph_tensors["valid_idx"] = shm_valid_idx

@@ -11,12 +11,7 @@ from .utils import sq_compress, vq_compress
 
 class CompressionManager(object):
 
-    def __init__(self,
-                 methods,
-                 configs,
-                 cache_path,
-                 shm_manager: ShmManager,
-                 preserve_valid_test=False):
+    def __init__(self, methods, configs, cache_path, shm_manager: ShmManager):
         assert len(methods) == 2
         assert len(configs) == 2
         for method, config in zip(methods, configs):
@@ -32,7 +27,6 @@ class CompressionManager(object):
         self.configs = configs
         self.cache_path = cache_path
         self.shm_manager = shm_manager
-        self.preserve_valid_test = preserve_valid_test
 
     def register(self,
                  indptr,
@@ -40,6 +34,7 @@ class CompressionManager(object):
                  train_seeds,
                  labels,
                  features,
+                 core_idx,
                  valid_idx=None,
                  test_idx=None):
         self.indptr = indptr
@@ -49,17 +44,24 @@ class CompressionManager(object):
         self.features = features
         self.valid_idx = valid_idx
         self.test_idx = test_idx
+        self.core_idx = core_idx
 
         self.original_size = self.features.numel(
         ) * self.features.element_size()
 
-        self.core_idx = []
-        self.core_idx.append(self.train_seeds)
-        if self.preserve_valid_test and self.valid_idx is not None:
-            self.core_idx.append(self.valid_idx)
-        if self.preserve_valid_test and self.test_idx is not None:
-            self.core_idx.append(self.test_idx)
-        self.core_idx = torch.cat(self.core_idx).unique()
+        self.original_graph_size = 0
+        self.original_graph_size += indptr.numel() * indptr.element_size()
+        self.original_graph_size += indices.numel() * indices.element_size()
+        self.original_graph_size += train_seeds.numel(
+        ) * train_seeds.element_size()
+        self.original_graph_size += labels.numel() * labels.element_size()
+        self.original_graph_size += features.numel() * features.element_size()
+        if valid_idx is not None:
+            self.original_graph_size += valid_idx.numel(
+            ) * valid_idx.element_size()
+        if test_idx is not None:
+            self.original_graph_size += test_idx.numel(
+            ) * test_idx.element_size()
 
     def presampling(self, fanouts, batch_size=512):
         self.adj_hotness = torch.zeros(self.indptr.numel() - 1,
@@ -139,6 +141,7 @@ class CompressionManager(object):
                 self.valid_idx[:] = self.src2dst[self.valid_idx]
             if self.test_idx is not None:
                 self.test_idx[:] = self.src2dst[self.test_idx]
+            self.core_idx[:] = self.src2dst[self.core_idx]
 
             # recovery hotness
             self.hotness[self.train_seeds] -= max_hot
@@ -158,14 +161,6 @@ class CompressionManager(object):
                                    group=self.shm_manager._local_group)
         self.dst2src = package[0]
         self.hotness = package[1]
-
-        self.core_idx = []
-        self.core_idx.append(self.train_seeds)
-        if self.preserve_valid_test and self.valid_idx is not None:
-            self.core_idx.append(self.valid_idx)
-        if self.preserve_valid_test and self.test_idx is not None:
-            self.core_idx.append(self.test_idx)
-        self.core_idx = torch.cat(self.core_idx).unique()
 
     def compress(self):
         features_size = self.features.shape[0]
@@ -265,4 +260,39 @@ class CompressionManager(object):
             if self.test_idx is not None:
                 torch.save(self.test_idx,
                            os.path.join(self.cache_path, "test_idx.pt"))
+
+            self.compressed_graph_size = 0
+            self.compressed_graph_size += self.compressed_features.numel(
+            ) * self.compressed_features.element_size()
+            self.compressed_graph_size += self.codebooks.numel(
+            ) * self.codebooks.element_size()
+            self.compressed_graph_size += self.labels.numel(
+            ) * self.labels.element_size()
+            self.compressed_graph_size += self.indptr.numel(
+            ) * self.indptr.element_size()
+            self.compressed_graph_size += self.indices.numel(
+            ) * self.indices.element_size()
+            self.compressed_graph_size += self.train_seeds.numel(
+            ) * self.train_seeds.element_size()
+            self.compressed_graph_size += self.adj_hotness.numel(
+            ) * self.adj_hotness.element_size()
+            self.compressed_graph_size += self.feat_hotness.numel(
+            ) * self.feat_hotness.element_size()
+            self.compressed_graph_size += self.compressed_core_feature.numel(
+            ) * self.compressed_core_feature.element_size()
+            self.compressed_graph_size += self.core_codebook.numel(
+            ) * self.core_codebook.element_size()
+            self.compressed_graph_size += self.core_idx.numel(
+            ) * self.core_idx.element_size()
+            if self.valid_idx is not None:
+                self.compressed_graph_size += self.valid_idx.numel(
+                ) * self.valid_idx.element_size()
+            if self.test_idx is not None:
+                self.compressed_graph_size += self.test_idx.numel(
+                ) * self.test_idx.element_size()
+
             print("Results saved to {}".format(self.cache_path))
+            print(
+                "Original graph size {:.3f} GB, compressed graph size {:.3f} GB"
+                .format(self.original_graph_size / 1024 / 1024 / 1024,
+                        self.compressed_graph_size / 1024 / 1024 / 1024))

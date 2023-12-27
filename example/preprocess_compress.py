@@ -42,7 +42,6 @@ if __name__ == "__main__":
                            type=int,
                            default=1024,
                            help="batch size for presampling")
-    argparser.add_argument("--preserve-valid-test", action="store_true")
     args = argparser.parse_args()
     print(args)
 
@@ -74,12 +73,10 @@ if __name__ == "__main__":
     print("Load dataset time: {:.3f} sec".format(time.time() - begin))
 
     methods = [method for method in args.methods.split(",")]
-    compression_manager = bifeat.CompressionManager(
-        methods=methods,
-        configs=eval(args.configs),
-        cache_path=args.save_path,
-        shm_manager=shm_manager,
-        preserve_valid_test=args.preserve_valid_test)
+    compression_manager = bifeat.CompressionManager(methods=methods,
+                                                    configs=eval(args.configs),
+                                                    cache_path=args.save_path,
+                                                    shm_manager=shm_manager)
 
     valid = graph_tensors["valid_idx"] if "valid_idx" in graph_tensors else None
     test = graph_tensors["test_idx"] if "test_idx" in graph_tensors else None
