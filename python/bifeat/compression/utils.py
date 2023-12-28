@@ -44,12 +44,12 @@ def sq_compress(tensor,
 
     if fake_feat:
         sample = torch.randn(
-            (sample_size, )).reshape(-1, 1).repeat(1, feat_dim).float()
+            (sample_size, ),
+            dtype=torch.float32).reshape(-1, 1).repeat(1, feat_dim)
     else:
         perm = torch.randperm(num_items)
         sample_size = num_items // 10 if num_items // 10 >= sample_size else sample_size
         sample = tensor[perm[:sample_size]]
-
     fmin = max(np.percentile(np.abs(sample), 0.5), epsilon)
     fmax = max(np.percentile(np.abs(sample), 99.5), 2 * epsilon)
     fmin = torch.tensor(fmin)
@@ -83,9 +83,9 @@ def sq_compress(tensor,
     for start in tqdm.trange(0, num_items, compress_batch_size):
         end = min(num_items, start + compress_batch_size)
         if fake_feat:
-            tensor_ = torch.randn((min(compress_batch_size,
-                                       end - start), )).reshape(-1, 1).repeat(
-                                           1, feat_dim).float().cuda()
+            tensor_ = torch.randn(
+                (min(compress_batch_size, end - start), ),
+                dtype=torch.float32).reshape(-1, 1).repeat(1, feat_dim).cuda()
         else:
             tensor_ = tensor[start:end].to(device).to(torch.float32)
         sign = torch.sign(tensor_)
@@ -176,7 +176,8 @@ def vq_compress(tensor,
 
     if fake_feat:
         sample = torch.randn(
-            (sample_size, )).reshape(-1, 1).repeat(1, feat_dim).float()
+            (sample_size, ),
+            dtype=torch.float32).reshape(-1, 1).repeat(1, feat_dim).cuda()
     else:
         perm = torch.randperm(num_items)
         sample_size = num_items // 10 if num_items // 10 >= sample_size else sample_size
@@ -197,12 +198,11 @@ def vq_compress(tensor,
         start = step
         end = min(step + compress_batch_size, num_items)
         if fake_feat:
-            tensor_ = torch.randn((min(compress_batch_size,
-                                       end - start), )).reshape(-1, 1).repeat(
-                                           1, feat_dim).float().cuda()
+            tensor_ = torch.randn(
+                (min(compress_batch_size, end - start), ),
+                dtype=torch.float32).reshape(-1, 1).repeat(1, feat_dim).cuda()
         else:
             tensor_ = tensor[start:end].to(device).to(torch.float32)
-
         for j in range(num_parts):
             X = tensor_[:, j * width:(j + 1) * width]
             labels = kmeans_list[j].predict(X)
