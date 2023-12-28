@@ -153,9 +153,13 @@ class StructureCacheServer:
             else:
                 if self._count_hit:
                     self.access_times += seeds.shape[0]
-                    self.hit_times += capi._CAPI_count_cached_nids(
-                        seeds, self.cached_nids_hashed,
-                        self.cached_nids_in_gpu_hashed)
+                    # self.hit_times += capi._CAPI_count_cached_nids(
+                    #     seeds, self.cached_nids_hashed,
+                    #     self.cached_nids_in_gpu_hashed)
+                    self.hit_times += torch.sum(
+                        capi._CAPI_search_hashmap(
+                            self.cached_nids_hashed, self.
+                            cached_nids_in_gpu_hashed, seeds) != -1).item()
                 coo_row, coo_col = capi._CAPI_cuda_sample_neighbors_with_caching(
                     seeds, self.cached_indptr, self.indptr,
                     self.cached_indices, self.indices, self.cached_nids_hashed,

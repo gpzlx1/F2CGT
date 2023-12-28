@@ -59,8 +59,8 @@ def run(rank, world_size, data, args):
                                                fan_out,
                                                args.batch_size,
                                                g["adj_hotness"],
-                                               step=0.05,
-                                               num_epochs=10)
+                                               step=args.adj_step,
+                                               num_epochs=args.adj_epochs)
     feat_slope = bifeat.cache.compute_feat_slope(g["features"],
                                                  g["feat_hotness"],
                                                  g["indptr"],
@@ -68,8 +68,8 @@ def run(rank, world_size, data, args):
                                                  seeds,
                                                  fan_out,
                                                  batch_size=args.batch_size,
-                                                 step=0.2,
-                                                 num_epochs=5)
+                                                 step=args.feat_step,
+                                                 num_epochs=args.feat_epochs)
     slope_tensor = torch.tensor([adj_slope, feat_slope], device="cuda")
     dist.all_reduce(slope_tensor, dist.ReduceOp.SUM)
     slope_tensor = slope_tensor / world_size
@@ -127,8 +127,12 @@ if __name__ == "__main__":
         help=
         "number of trainers participated in the compress, no greater than available GPUs num"
     )
-    argparser.add_argument("--batch-size", type=int, default=1024)
+    argparser.add_argument("--batch-size", type=int, default=1000)
     argparser.add_argument("--fan-out", type=str, default="5,10,15")
+    argparser.add_argument("--adj-step", default=0.05, type=float)
+    argparser.add_argument("--adj-epochs", default=10, type=int)
+    argparser.add_argument("--feat-step", default=0.2, type=float)
+    argparser.add_argument("--feat-epochs", default=5, type=int)
     args = argparser.parse_args()
     print(args)
     main(args)

@@ -327,7 +327,7 @@ if __name__ == "__main__":
         "number of trainers participated in the compress, no greater than available GPUs num"
     )
     argparser.add_argument("--lr", type=float, default=0.003)
-    argparser.add_argument("--batch-size", type=int, default=1024)
+    argparser.add_argument("--batch-size", type=int, default=1000)
     argparser.add_argument("--batch-size-eval", type=int, default=100000)
     argparser.add_argument("--log-every", type=int, default=20)
     argparser.add_argument("--eval-every", type=int, default=5)

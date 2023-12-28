@@ -79,8 +79,12 @@ class FeatureCacheServer:
         else:
             if self._count_hit:
                 self.access_times += index.shape[0]
-                self.hit_times += capi._CAPI_count_cached_nids(
-                    index, self.hashmap_key, self.hashmap_value)
+                # self.hit_times += capi._CAPI_count_cached_nids(
+                #     index, self.hashmap_key, self.hashmap_value)
+                self.hit_times += torch.sum(
+                    capi._CAPI_search_hashmap(self.hashmap_key,
+                                              self.hashmap_value, index) !=
+                    -1).item()
             return capi._CAPI_fetch_feature_data_with_caching(
                 self.feature,
                 self.cached_feature,
@@ -204,6 +208,7 @@ class FeatureLoadServer:
                 self._core_compressed_feature, searched_seeds_index)
             seeds_features = self._decompresser.decompress(
                 seeds_compressed_features, searched_seeds_index, 0)
+
         else:
             seeds_features = torch.empty((0, self._feat_dim),
                                          dtype=torch.float32,

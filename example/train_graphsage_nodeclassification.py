@@ -136,6 +136,7 @@ def run(rank, world_size, data, args):
                 cache_toc = time.time()
                 print("Rank {} builds cache time = {:.3f} sec".format(
                     rank, cache_toc - cache_tic))
+                torch.cuda.empty_cache()
 
             if (it + 1) % args.log_every == 0:
                 acc = compute_acc(batch_pred, batch_labels)
@@ -320,7 +321,7 @@ if __name__ == "__main__":
     )
     argparser.add_argument("--lr", type=float, default=0.003)
     argparser.add_argument("--dropout", type=float, default=0.5)
-    argparser.add_argument("--batch-size", type=int, default=1024)
+    argparser.add_argument("--batch-size", type=int, default=1000)
     argparser.add_argument("--batch-size-eval", type=int, default=100000)
     argparser.add_argument("--log-every", type=int, default=20)
     argparser.add_argument("--eval-every", type=int, default=5)

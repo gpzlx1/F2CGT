@@ -159,11 +159,17 @@ def cache_idx_select(
 
     unified_hotness = torch.cat(unified_hotness_list)
     unified_space = torch.cat(unified_space_list)
-
+    valid_mask = unified_hotness > 0
     sorted_index = torch.argsort(unified_hotness, descending=True)
+    del unified_hotness
+    sorted_index = sorted_index[valid_mask[sorted_index]]
+    del valid_mask
     sorted_space = unified_space[sorted_index]
+    del unified_space
     space_prefix_sum = torch.cumsum(sorted_space, 0)
+    del sorted_space
     cached_index = sorted_index[space_prefix_sum <= gpu_capacity]
+    del space_prefix_sum
 
     cached_index_list = []
     for i in range(num_feat_type):
