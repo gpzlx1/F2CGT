@@ -1,1 +1,0 @@
-python3 example/train_graphsage_nodeclassification.py --num-epochs 20 --num-hidden 256 --dropout 0.2 --root /data/ogbn_products/compressed-2level/ --eval-every 1 --feat-slope 0.000138 --adj-slope 0.025807 --num-trainers 1

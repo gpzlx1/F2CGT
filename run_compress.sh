@@ -1,1 +1,0 @@
-torchrun --nproc_per_node 2 example/preprocess_compress.py --save-path /data/ogbn_products/compressed-2level_1/ --configs "[{'target_bits':1},{'width':64,'length':16384}]" --methods sq,vq
