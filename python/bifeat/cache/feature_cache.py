@@ -200,29 +200,52 @@ class FeatureLoadServer:
             searched_seeds_index = capi._CAPI_search_hashmap(
                 self._core_hashmap_key, self._core_hashmap_value,
                 index[:seeds_num])
-            seeds_compressed_features = capi._CAPI_fetch_feature_data(
-                self._core_compressed_feature, searched_seeds_index)
-            seeds_features = self._decompresser.decompress(
-                seeds_compressed_features, searched_seeds_index, 0)
-        else:
-            seeds_features = torch.empty((0, self._feat_dim),
-                                         dtype=torch.float32,
-                                         device="cuda")
+            searched_mask = searched_seeds_index != -1
+            seeds_src_idx = searched_seeds_index[searched_mask]
+            searched_seeds_num = seeds_src_idx.shape[0]
+
+            if searched_seeds_num > 0:
+                seeds_compressed_features = capi._CAPI_fetch_feature_data(
+                    self._core_compressed_feature, seeds_src_idx)
+
+                frontier_mask = torch.cat([
+                    ~searched_mask,
+                    torch.ones((index.shape[0] - seeds_num, ),
+                               dtype=torch.bool,
+                               device="cuda")
+                ])
+                frontier_src_idx = index[frontier_mask]
+                if self._full_cached:
+                    frontier_compressed_features = self._cached_feature[
+                        frontier_src_idx]
+                elif self.no_cached:
+                    frontier_compressed_features = capi._CAPI_fetch_feature_data(
+                        self._compressed_feature, frontier_src_idx)
+                else:
+                    frontier_compressed_features = capi._CAPI_fetch_feature_data_with_caching(
+                        self._compressed_feature, self._cached_feature,
+                        self._hashmap_key, self._hashmap_value,
+                        frontier_src_idx)
+
+                result = torch.zeros((index.shape[0], self._feat_dim),
+                                     dtype=torch.float32,
+                                     device="cuda")
+                result[~frontier_mask] = self._decompresser.decompress(
+                    seeds_compressed_features, seeds_src_idx, 0)
+                result[frontier_mask] = self._decompresser.decompress(
+                    frontier_compressed_features, frontier_src_idx, 1)
+                return result
 
         if self._full_cached:
-            frontier_compressed_features = self._cached_feature[
-                index[seeds_num:]]
+            compressed_features = self._cached_feature[index]
         elif self.no_cached:
-            frontier_compressed_features = capi._CAPI_fetch_feature_data(
-                self._compressed_feature, index[seeds_num:])
+            compressed_features = capi._CAPI_fetch_feature_data(
+                self._compressed_feature, index)
         else:
-            frontier_compressed_features = capi._CAPI_fetch_feature_data_with_caching(
+            compressed_features = capi._CAPI_fetch_feature_data_with_caching(
                 self._compressed_feature, self._cached_feature,
-                self._hashmap_key, self._hashmap_value, index[seeds_num:])
-        frontier_features = self._decompresser.decompress(
-            frontier_compressed_features, index[seeds_num:], 1)
-
-        return torch.cat([seeds_features, frontier_features])
+                self._hashmap_key, self._hashmap_value, index)
+        return self._decompresser.decompress(compressed_features, index, 1)
 
     def clear_cache(self):
         self._cached_feature = None
