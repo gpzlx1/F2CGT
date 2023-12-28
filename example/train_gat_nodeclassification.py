@@ -273,6 +273,7 @@ def run(rank, world_size, data, args):
     if rank == 0:
         timetable = ("=====================\n"
                      "All reduce time:\n"
+                     "Throughput(seeds/sec): {:.4f}\n"
                      "Epoch Time(s): {:.4f}\n"
                      "Sampling Time(s): {:.4f}\n"
                      "Loading Time(s): {:.4f}\n"
@@ -280,6 +281,7 @@ def run(rank, world_size, data, args):
                      "Backward Time(s): {:.4f}\n"
                      "Update Time(s): {:.4f}\n"
                      "=====================".format(
+                         train_nids.shape[0] / all_reduce_epoch_time,
                          all_reduce_epoch_time,
                          all_reduce_sample_time,
                          all_reduce_load_time,
