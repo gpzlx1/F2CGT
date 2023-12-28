@@ -43,7 +43,8 @@ def sq_compress(tensor,
     epsilon = 1e-5
 
     if fake_feat:
-        sample = torch.ones((sample_size, feat_dim), dtype=torch.float32)
+        sample = torch.randn(
+            (sample_size, )).reshape(-1, 1).repeat(1, feat_dim).float()
     else:
         perm = torch.randperm(num_items)
         sample_size = num_items // 10 if num_items // 10 >= sample_size else sample_size
@@ -82,10 +83,9 @@ def sq_compress(tensor,
     for start in tqdm.trange(0, num_items, compress_batch_size):
         end = min(num_items, start + compress_batch_size)
         if fake_feat:
-            tensor_ = torch.ones(
-                (min(compress_batch_size, end - start), feat_dim),
-                dtype=torch.float32,
-                device="cuda")
+            tensor_ = torch.randn((min(compress_batch_size,
+                                       end - start), )).reshape(-1, 1).repeat(
+                                           1, feat_dim).float().cuda()
         else:
             tensor_ = tensor[start:end].to(device).to(torch.float32)
         sign = torch.sign(tensor_)
@@ -175,9 +175,8 @@ def vq_compress(tensor,
         dtype = torch.int32
 
     if fake_feat:
-        sample = torch.ones((sample_size, feat_dim),
-                            dtype=torch.float32,
-                            device="cuda")
+        sample = torch.randn(
+            (sample_size, )).reshape(-1, 1).repeat(1, feat_dim).float()
     else:
         perm = torch.randperm(num_items)
         sample_size = num_items // 10 if num_items // 10 >= sample_size else sample_size
@@ -198,10 +197,9 @@ def vq_compress(tensor,
         start = step
         end = min(step + compress_batch_size, num_items)
         if fake_feat:
-            tensor_ = torch.ones(
-                (min(compress_batch_size, end - start), feat_dim),
-                dtype=torch.float32,
-                device="cuda")
+            tensor_ = torch.randn((min(compress_batch_size,
+                                       end - start), )).reshape(-1, 1).repeat(
+                                           1, feat_dim).float().cuda()
         else:
             tensor_ = tensor[start:end].to(device).to(torch.float32)
 
