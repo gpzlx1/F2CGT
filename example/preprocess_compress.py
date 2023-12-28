@@ -51,7 +51,7 @@ if __name__ == "__main__":
 
     total_start = time.time()
 
-    dist.init_process_group(backend='nccl')
+    dist.init_process_group(backend='gloo')
     rank = dist.get_rank()
     world_size = dist.get_world_size()
     assert world_size == args.num_gpus
@@ -80,7 +80,7 @@ if __name__ == "__main__":
                                                             with_test=False)
         fake_feat_dim = None
         fake_feat_dtype = None
-    elif args.dataset == "mag240m":
+    elif args.dataset == "mag240M":
         graph_tensors, meta_data = shm_manager.load_dataset(with_feature=False,
                                                             with_valid=True,
                                                             with_test=True)

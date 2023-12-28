@@ -261,7 +261,7 @@ def process_papers_from_dgl_graph(dataset_path, save_path):
     torch.save(meta_data, os.path.join(save_path, "metadata.pt"))
 
 
-def process_mag240m(dataset_path, save_path, gen_feat=False):
+def process_mag240M(dataset_path, save_path, gen_feat=False):
     dataset = MAG240MDataset(dataset_path)
 
     ei_writes = dataset.edge_index("author", "writes", "paper")
@@ -374,7 +374,7 @@ def process_mag240m(dataset_path, save_path, gen_feat=False):
         dataset.get_idx_split("test-whole")) + paper_offset
 
     meta_data = {
-        "dataset": "mag240m",
+        "dataset": "mag240M",
         "num_nodes": num_nodes,
         "num_edges": num_edges,
         "num_classes": dataset.num_classes,
@@ -429,8 +429,8 @@ def process_mag240m(dataset_path, save_path, gen_feat=False):
         full_feat.flush()
 
 
-def process_mag240m_from_dgl_graph(dataset_path, save_path):
-    print("Process mag240m...")
+def process_mag240M_from_dgl_graph(dataset_path, save_path):
+    print("Process mag240M...")
 
     print("Read data...")
     g = dgl.load_graphs(dataset_path)[0][0]
@@ -443,10 +443,8 @@ def process_mag240m_from_dgl_graph(dataset_path, save_path):
     num_nodes = g.num_nodes()
     num_edges = g.num_edges()
     del g
-    features = torch.ones((num_nodes, 768), dtype=torch.float16)
 
     print("Save data...")
-    torch.save(features, os.path.join(save_path, "features.pt"))
     torch.save(labels.long(), os.path.join(save_path, "labels.pt"))
     torch.save(indptr.long(), os.path.join(save_path, "indptr.pt"))
     torch.save(indices.long(), os.path.join(save_path, "indices.pt"))
@@ -456,7 +454,7 @@ def process_mag240m_from_dgl_graph(dataset_path, save_path):
 
     print("Generate meta data...")
     num_classes = np.unique(labels[~np.isnan(labels)]).shape[0]
-    feature_dim = features.shape[1]
+    feature_dim = 768
     num_train_nodes = train_idx.shape[0]
     num_valid_nodes = valid_idx.shape[0]
     num_test_nodes = test_idx.shape[0]
@@ -574,7 +572,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--dataset",
         default="ogbn-papers100M",
-        choices=["ogbn-products", "ogbn-papers100M", "mag240m", "friendster"])
+        choices=["ogbn-products", "ogbn-papers100M", "mag240M", "friendster"])
     parser.add_argument("--root", help="Path of the dataset.")
     parser.add_argument("--save-path", help="Path to save the processed data.")
     parser.add_argument("--dgl-graph", action="store_true", default=False)
@@ -586,8 +584,8 @@ if __name__ == '__main__':
             process_papers_from_dgl_graph(args.root, args.save_path)
         elif args.dataset == "ogbn-products":
             process_products_from_dgl_graph(args.root, args.save_path)
-        elif args.dataset == "mag240m":
-            process_mag240m_from_dgl_graph(args.root, args.save_path)
+        elif args.dataset == "mag240M":
+            process_mag240M_from_dgl_graph(args.root, args.save_path)
         elif args.dataset == "friendster":
             process_friendster_from_dgl_graph(args.root, args.save_path)
 
@@ -596,7 +594,7 @@ if __name__ == '__main__':
             process_papers100M(args.root, args.save_path)
         elif args.dataset == "ogbn-products":
             process_products(args.root, args.save_path)
-        elif args.dataset == "mag240m":
-            process_mag240m(args.root, args.save_path)
+        elif args.dataset == "mag240M":
+            process_mag240M(args.root, args.save_path)
         elif args.dataset == "friendster":
             process_friendster(args.root, args.save_path)
