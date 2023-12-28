@@ -49,8 +49,6 @@ if __name__ == "__main__":
     args = argparser.parse_args()
     print(args)
 
-    total_start = time.time()
-
     dist.init_process_group(backend='gloo')
     rank = dist.get_rank()
     world_size = dist.get_world_size()
@@ -75,11 +73,11 @@ if __name__ == "__main__":
 
     begin = time.time()
     if args.dataset == "friendster":
-        graph_tensors, meta_data = shm_manager.load_dataset(with_feature=True,
+        graph_tensors, meta_data = shm_manager.load_dataset(with_feature=False,
                                                             with_valid=False,
                                                             with_test=False)
-        fake_feat_dim = None
-        fake_feat_dtype = None
+        fake_feat_dim = meta_data["feature_dim"]
+        fake_feat_dtype = torch.float32
     elif args.dataset == "mag240M":
         graph_tensors, meta_data = shm_manager.load_dataset(with_feature=False,
                                                             with_valid=True,
@@ -94,6 +92,8 @@ if __name__ == "__main__":
         fake_feat_dtype = None
     torch.cuda.synchronize()
     print("Load dataset time: {:.3f} sec".format(time.time() - begin))
+
+    total_start = time.time()
 
     methods = [method for method in args.methods.split(",")]
     sample_sizes = [int(size) for size in args.sample_sizes.split(",")]
