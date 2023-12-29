@@ -64,5 +64,6 @@ PYBIND11_MODULE(BiFeatLib, m) {
 
   py::class_<hashmap::BiFeatHashmaps>(m, "BiFeatHashmaps")
       .def(py::init<int64_t, std::vector<torch::Tensor>>())
-      .def("query", &hashmap::BiFeatHashmaps::query);
+      .def("query", &hashmap::BiFeatHashmaps::query)
+      .def("get_memory_usage", &hashmap::BiFeatHashmaps::get_memory_usage);
 }

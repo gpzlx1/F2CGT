@@ -19,6 +19,7 @@ __global__ void InitPair(pair_type* pair, int32_t* key, int32_t* value,
 
 BiFeatHashmaps::BiFeatHashmaps(int64_t hashmap_num,
                                std::vector<torch::Tensor> cache_nids) {
+  memory_usage_ = 0;
   hashmap_num_ = hashmap_num;
   CHECK(cache_nids.size() == hashmap_num_);
   CHECK(hashmap_num_ <= 2);
@@ -44,6 +45,7 @@ BiFeatHashmaps::BiFeatHashmaps(int64_t hashmap_num,
 
     // create hashmap
     auto hashmap_ptr = new bght::bcht<int32_t, int32_t>(capacity, -1, -1);
+    memory_usage_ = capacity * sizeof(pair_type);
     hashmap_ptr->insert(pair_, pair_ + num_elem);
 
     // free
@@ -56,7 +58,15 @@ BiFeatHashmaps::BiFeatHashmaps(int64_t hashmap_num,
   }
 }
 
-BiFeatHashmaps::~BiFeatHashmaps() {}
+BiFeatHashmaps::~BiFeatHashmaps() {
+  for (int i = 0; i < hashmap_num_; i++) {
+    if (i == 0) {
+      delete static_cast<bght::bcht<int32_t, int32_t>*>(hashmap1_);
+    } else {
+      delete static_cast<bght::bcht<int32_t, int32_t>*>(hashmap2_);
+    }
+  }
+}
 
 torch::Tensor BiFeatHashmaps::query(torch::Tensor keys,
                                     int64_t first_part_size) {

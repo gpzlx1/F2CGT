@@ -20,6 +20,8 @@ keys = torch.randint(0, 20_000_000, (20_000_000, ), dtype=torch.long).cuda()
 keys = torch.unique(keys)
 # keys = torch.arange(0, 1000_000, dtype=torch.long).cuda()
 hashmap_v2 = BiFeatLib.BiFeatHashmaps(1, [keys])
+print(hashmap_v2.get_memory_usage() / 1024 / 1024, "MB")
+print(20_000_000 * 8 / 1024 / 1024, "MB")
 
 query = torch.randint(0, 25_000_000, (10_000_000, ), dtype=torch.long).cuda()
 result_v2 = hashmap_v2.query(query, query.numel())

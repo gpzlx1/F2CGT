@@ -15,6 +15,8 @@ class BiFeatHashmaps {
   ~BiFeatHashmaps();
   torch::Tensor query(torch::Tensor keys, int64_t first_part_size);
 
+  int64_t get_memory_usage() { return memory_usage_; }
+
   // private:
   // bght::bcht<int64_t, int32_t> hashmap1_;
   // bght::bcht<int64_t, int32_t> hashmap2_;
