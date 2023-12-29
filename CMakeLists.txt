@@ -46,12 +46,18 @@ if(OPENMP_FOUND)
 endif(OPENMP_FOUND)
 message(STATUS "Build with OpenMP")
 
+# Set bght
+# cmake submodule
+add_subdirectory(third_party/BGHT)
+list(APPEND BiFeat_EXTERNAL_LIB bght)
+
 
 # Define our library target
 file(GLOB BiFeat_SRC
   src/cuda/*.cu
   src/cuda/*.cc
   src/*.cc
+  src/hashmap/*.cu
 )
 pybind11_add_module(BiFeatLib ${BiFeat_SRC})
 set_target_properties(BiFeatLib PROPERTIES CUDA_SEPARABLE_COMPILATION ON)

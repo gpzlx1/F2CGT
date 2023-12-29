@@ -2,6 +2,7 @@
 #include <torch/script.h>
 #include "cpu/omp.h"
 #include "cuda/cuda_ops.h"
+#include "hashmap/hashmap_v2.h"
 #include "pin_memory.h"
 #include "shm/shared_memory.h"
 
@@ -60,4 +61,8 @@ PYBIND11_MODULE(BiFeatLib, m) {
            py::arg("compressed_features"), py::arg("codebooks"),
            py::arg("feat_dim"));
   // .def("_CAPI_meanaggr", & meanaggr);
+
+  py::class_<hashmap::BiFeatHashmaps>(m, "BiFeatHashmaps")
+      .def(py::init<int64_t, std::vector<torch::Tensor>>())
+      .def("query", &hashmap::BiFeatHashmaps::query);
 }
