@@ -139,7 +139,8 @@ def run(rank, world_size, data, args):
                 feature_cache_nids_list, adj_cache_nids = get_cache_nids(
                     (g, metadata), args, mem_capacity)
                 torch.cuda.empty_cache()
-                feature_server.cache_data(feature_cache_nids_list[0])
+                feature_server.cache_feature(feature_cache_nids_list[0])
+                feature_server.cache_core_feature(torch.arange(10).long())
                 sampler.cache_data(adj_cache_nids)
                 cache_toc = time.time()
                 print("Rank {} builds cache time = {:.3f} sec".format(

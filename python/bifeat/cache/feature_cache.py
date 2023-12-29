@@ -35,15 +35,11 @@ class FeatureCacheServer:
 
         elif cache_nids.shape[0] > 0:
             self.cached_feature = self.feature[cache_nids].cuda()
-            self.hashmap_key, self.hashmap_value = capi._CAPI_create_hashmap(
-                cache_nids.cuda())
+            self._hashmap = capi.BiFeatHashmaps(1, [cache_nids.int().cuda()])
+
             cache_size = self.cached_feature.numel(
             ) * self.cached_feature.element_size()
-
-            hashmap_size = self.hashmap_key.numel(
-            ) * self.hashmap_key.element_size()
-            hashmap_size += self.hashmap_value.numel(
-            ) * self.hashmap_value.element_size()
+            hashmap_size = self._hashmap.get_memory_usage()
 
         else:
             self.no_cached = True
@@ -85,13 +81,12 @@ class FeatureCacheServer:
                     capi._CAPI_search_hashmap(self.hashmap_key,
                                               self.hashmap_value, index) !=
                     -1).item()
-            return capi._CAPI_fetch_feature_data_with_caching(
-                self.feature,
-                self.cached_feature,
-                self.hashmap_key,
-                self.hashmap_value,
-                index,
-            )
+
+            index = index.int()
+            local_nids = self._hashmap.query(index, 0)
+            result = capi._CAPI_fetch_feature_data_with_caching_v2(
+                self.feature, self.cached_feature, index, local_nids)
+            return result
 
     def clear_cache(self):
         self.cached_feature = None
@@ -129,28 +124,27 @@ class FeatureLoadServer:
         capi._CAPI_pin_tensor(self._compressed_feature)
         capi._CAPI_pin_tensor(self._core_compressed_feature)
 
-        self._full_cached = False
+        self.full_cached = False
         self.no_cached = True
 
-        self._core_hashmap_key, self._core_hashmap_value = capi._CAPI_create_hashmap(
-            core_idx.cuda())
-        core_idx_hashmap_size = self._core_hashmap_key.numel(
-        ) * self._core_hashmap_key.element_size(
-        ) + self._core_hashmap_value.numel(
-        ) * self._core_hashmap_value.element_size()
+        self.core_full_cached = False
+        self.core_no_cached = True
+
+        self._core_hash_map = capi.BiFeatHashmaps(
+            1, [self._core_idx.int().cuda()])
         print("GPU {} Core index hashmap size = {:.3f} GB".format(
             torch.cuda.current_device(),
-            core_idx_hashmap_size / 1024 / 1024 / 1024))
+            self._core_hash_map.get_memory_usage() / 1024 / 1024 / 1024))
 
     def __del__(self):
         capi._CAPI_unpin_tensor(self._compressed_feature)
         capi._CAPI_unpin_tensor(self._core_compressed_feature)
 
-    def cache_data(self, cache_nids):
+    def cache_feature(self, cache_nids):
         start = time.time()
 
         if cache_nids.shape[0] == self._compressed_feature.shape[0]:
-            self._full_cached = True
+            self.full_cached = True
             self.no_cached = False
             self._cached_feature = self._compressed_feature.cuda()
             cache_size = self._cached_feature.numel(
@@ -161,15 +155,12 @@ class FeatureLoadServer:
             self.no_cached = False
             self._cached_feature = self._compressed_feature[
                 cache_nids.cpu()].cuda()
-            self._hashmap_key, self._hashmap_value = capi._CAPI_create_hashmap(
-                cache_nids.cuda())
+            self._cache_hashmap = capi.BiFeatHashmaps(
+                1, [cache_nids.int().cuda()])
+
             cache_size = self._cached_feature.numel(
             ) * self._cached_feature.element_size()
-
-            hashmap_size = self._hashmap_key.numel(
-            ) * self._hashmap_key.element_size()
-            hashmap_size += self._hashmap_value.numel(
-            ) * self._hashmap_value.element_size()
+            hashmap_size = self._cache_hashmap.get_memory_usage()
 
         else:
             self.no_cached = True
@@ -189,6 +180,46 @@ class FeatureLoadServer:
         print("GPU {} Hashmap size = {:.3f} GB".format(
             torch.cuda.current_device(), hashmap_size / 1024 / 1024 / 1024))
 
+    def cache_core_feature(self, core_cache_nids):
+        start = time.time()
+
+        if core_cache_nids.shape[0] == self._core_compressed_feature.shape[0]:
+            self.core_full_cached = True
+            self.core_no_cached = False
+            self._core_cached_feature = self._core_compressed_feature.cuda()
+            cache_size = self._core_cached_feature.numel(
+            ) * self._core_cached_feature.element_size()
+            hashmap_size = 0
+
+        elif core_cache_nids.shape[0] > 0:
+            self.core_no_cached = False
+            self._core_cached_feature = self._core_compressed_feature[
+                core_cache_nids.cpu()].cuda()
+            self._core_cache_hashmap = capi.BiFeatHashmaps(
+                1, [core_cache_nids.int().cuda()])
+
+            cache_size = self._core_cached_feature.numel(
+            ) * self._core_cached_feature.element_size()
+            hashmap_size = self._core_cache_hashmap.get_memory_usage()
+
+        else:
+            self.core_no_cached = True
+            cache_size = 0
+            hashmap_size = 0
+
+        torch.cuda.synchronize()
+        end = time.time()
+
+        print(
+            "GPU {} takes {:.3f} s to cache Core feature data, cached size = {:.3f} GB, cache rate = {:.3f}"
+            .format(
+                torch.cuda.current_device(), end - start,
+                cache_size / 1024 / 1024 / 1024,
+                cache_size / (self._core_compressed_feature.element_size() *
+                              self._core_compressed_feature.numel())))
+        print("GPU {} Core Hashmap size = {:.3f} GB".format(
+            torch.cuda.current_device(), hashmap_size / 1024 / 1024 / 1024))
+
     def __getitem__(self, data):
         '''
         data = index, seeds_num
@@ -199,39 +230,50 @@ class FeatureLoadServer:
         - return fetched feature (a gpu tensor)
         '''
         index, seeds_num = data
+        index = index.cuda().int()
 
         if seeds_num > 0:
-            searched_seeds_index = capi._CAPI_search_hashmap(
-                self._core_hashmap_key, self._core_hashmap_value,
-                index[:seeds_num])
-            seeds_compressed_features = capi._CAPI_fetch_feature_data(
-                self._core_compressed_feature, searched_seeds_index)
-            seeds_features = self._decompresser.decompress(
-                seeds_compressed_features, searched_seeds_index, 0)
+            searched_seeds_index = self._core_hash_map.query(
+                index[:seeds_num], 0)
+
+            if self.core_full_cached:
+                seeds_compressed_features = self._core_cached_feature[
+                    searched_seeds_index.long()]
+            elif self.core_no_cached:
+                seeds_compressed_features = capi._CAPI_fetch_feature_data(
+                    self._core_compressed_feature, searched_seeds_index)
+            else:
+                cache_nids = self._core_cache_hashmap.query(
+                    searched_seeds_index, 0)
+                seeds_compressed_features = capi._CAPI_fetch_feature_data_with_caching_v2(
+                    self._core_compressed_feature, self._core_cached_feature,
+                    searched_seeds_index, cache_nids)
 
         else:
-            seeds_features = torch.empty((0, self._feat_dim),
-                                         dtype=torch.float32,
-                                         device="cuda")
+            seeds_compressed_features = torch.empty(
+                (0, self._core_compressed_feature.shape[1]),
+                dtype=self._core_compressed_feature.dtype(),
+                device="cuda")
 
-        if self._full_cached:
+        if self.full_cached:
             frontier_compressed_features = self._cached_feature[
-                index[seeds_num:]]
+                index[seeds_num:].long()]
         elif self.no_cached:
             frontier_compressed_features = capi._CAPI_fetch_feature_data(
                 self._compressed_feature, index[seeds_num:])
         else:
-            frontier_compressed_features = capi._CAPI_fetch_feature_data_with_caching(
+            local_nids = self._cache_hashmap.query(index[seeds_num:], 0)
+            frontier_compressed_features = capi._CAPI_fetch_feature_data_with_caching_v2(
                 self._compressed_feature, self._cached_feature,
-                self._hashmap_key, self._hashmap_value, index[seeds_num:])
-        frontier_features = self._decompresser.decompress(
-            frontier_compressed_features, index[seeds_num:], 1)
+                index[seeds_num:], local_nids)
 
-        return torch.cat([seeds_features, frontier_features])
+        result = torch.empty((index.numel(), self._decompresser.feat_dim),
+                             dtype=torch.float,
+                             device='cuda')
+        self._decompresser.decompress_v2(seeds_compressed_features,
+                                         searched_seeds_index, 0, result, 0)
+        self._decompresser.decompress_v2(frontier_compressed_features,
+                                         index[seeds_num:], 1, result,
+                                         seeds_num)
 
-    def clear_cache(self):
-        self._cached_feature = None
-        self._hashmap_key = None
-        self._hashmap_value = None
-        self._full_cached = False
-        self.no_cached = True
+        return result
