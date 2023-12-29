@@ -78,6 +78,63 @@ torch::Tensor FeatureFetchDataWithCachingCUDA(torch::Tensor cpu_data,
   return torch::Tensor();
 }
 
+//////////////////////////////////////////////////////////////////////////
+
+template <typename IndexType, typename FloatType>
+__global__ void _FeatureFetchDataWithCachingKernel_v2(
+    const int64_t num_elem, const int64_t data_dim,
+    const IndexType *__restrict__ const in_nids,
+    const IndexType *__restrict__ const local_nids,
+    FloatType *__restrict__ const cpu_data,
+    FloatType *__restrict__ const gpu_data,
+    FloatType *__restrict__ const out_data) {
+  int warp_size = 32;
+  int64_t thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+  int64_t warp_id = thread_id / warp_size;
+  int64_t lane = thread_id % warp_size;
+  int64_t warp_num = blockDim.x * gridDim.x / warp_size;
+
+  for (int i = warp_id; i < num_elem; i += warp_num) {
+    FloatType *input_ptr = local_nids[i] < 0
+                               ? cpu_data + in_nids[i] * data_dim
+                               : gpu_data + local_nids[i] * data_dim;
+
+    for (int j = lane; j < data_dim; j += warp_size) {
+      out_data[i * data_dim + j] = input_ptr[j];
+    }
+  }
+}
+
+torch::Tensor FeatureFetchDataWithCachingCUDA_V2(torch::Tensor cpu_data,
+                                                 torch::Tensor gpu_data,
+                                                 torch::Tensor nid,
+                                                 torch::Tensor local_nid) {
+  CHECK_CUDA(gpu_data);
+  CHECK_CUDA(nid);
+  CHECK_CUDA(local_nid);
+  PG_ID_TYPE_SWITCH(nid.dtype(), IndexType, {
+    PG_VALUE_TYPE_SWITCH(gpu_data.dtype(), FloatType, {
+      int num_items = nid.numel();
+      int dim = gpu_data.size(1);
+      torch::Tensor data_buff =
+          torch::empty({num_items, dim}, gpu_data.options());
+
+      constexpr int TILE_SIZE = 128 / BLOCK_SIZE;
+      const dim3 block(BLOCK_SIZE);
+      const dim3 grid((num_items + TILE_SIZE - 1) / TILE_SIZE);
+
+      _FeatureFetchDataWithCachingKernel_v2<IndexType, FloatType>
+          <<<grid, block>>>(
+              num_items, dim, nid.data_ptr<IndexType>(),
+              local_nid.data_ptr<IndexType>(), cpu_data.data_ptr<FloatType>(),
+              gpu_data.data_ptr<FloatType>(), data_buff.data_ptr<FloatType>());
+      return data_buff;
+    });
+  });
+
+  return torch::Tensor();
+}
+
 template <typename IndexType, typename FloatType, int TILE_SIZE>
 __global__ void _FeatureFetchDataKernel(
     const int64_t num_nids, const int64_t data_dim,

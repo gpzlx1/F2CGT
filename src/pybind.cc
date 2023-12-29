@@ -34,6 +34,9 @@ PYBIND11_MODULE(BiFeatLib, m) {
            &FeatureFetchDataWithCachingCUDA, py::arg("cpu_data"),
            py::arg("gpu_data"), py::arg("hashed_key_tensor"),
            py::arg("hashed_value_tensor"), py::arg("nid"))
+      .def("_CAPI_fetch_feature_data_with_caching_v2",
+           &FeatureFetchDataWithCachingCUDA_V2, py::arg("cpu_data"),
+           py::arg("gpu_data"), py::arg("nid"), py::arg("local_nid"))
       .def("_CAPI_cuda_index_fetch", &CUDAIndexFetch, py::arg("src"),
            py::arg("src_index"), py::arg("dst"), py::arg("dst_index"))
       .def("_CAPI_cuda_sample_neighbors", &RowWiseSamplingUniformCUDA,
@@ -57,9 +60,15 @@ PYBIND11_MODULE(BiFeatLib, m) {
   m.def("_CAPI_vq_decompress", &vq_decompress, py::arg("codebook_indices"),
         py::arg("compressed_features"), py::arg("codebooks"),
         py::arg("feat_dim"))
+      .def("_CAPI_vq_decompress_v2", &vq_decompress_v2, py::arg("index"),
+           py::arg("chunk_size"), py::arg("compressed_features"),
+           py::arg("codebooks"), py::arg("output"), py::arg("output_offset"))
       .def("_CAPI_sq_decompress", &sq_decompress, py::arg("codebook_indices"),
            py::arg("compressed_features"), py::arg("codebooks"),
-           py::arg("feat_dim"));
+           py::arg("feat_dim"))
+      .def("_CAPI_sq_decompress_v2", &sq_decompress_v2, py::arg("index"),
+           py::arg("chunk_size"), py::arg("compressed_features"),
+           py::arg("codebooks"), py::arg("output"), py::arg("output_offset"));
   // .def("_CAPI_meanaggr", & meanaggr);
 
   py::class_<hashmap::BiFeatHashmaps>(m, "BiFeatHashmaps")

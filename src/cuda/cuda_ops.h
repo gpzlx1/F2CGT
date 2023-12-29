@@ -13,6 +13,11 @@ torch::Tensor FeatureFetchDataWithCachingCUDA(
     torch::Tensor cpu_data, torch::Tensor gpu_data, torch::Tensor nid,
     torch::Tensor hashed_key_tensor, torch::Tensor hashed_value_tensor);
 
+torch::Tensor FeatureFetchDataWithCachingCUDA_V2(torch::Tensor cpu_data,
+                                                 torch::Tensor gpu_data,
+                                                 torch::Tensor nid,
+                                                 torch::Tensor local_nid);
+
 torch::Tensor FeatureFetchDataCUDA(torch::Tensor data, torch::Tensor nid);
 
 void CUDAIndexFetch(torch::Tensor src, torch::Tensor src_index,
@@ -44,9 +49,19 @@ torch::Tensor vq_decompress(torch::Tensor codebook_indices,
                             torch::Tensor compressed_features,
                             torch::Tensor codebooks, int64_t feat_dim);
 
+void vq_decompress_v2(torch::Tensor index, int64_t chunk_size,
+                      torch::Tensor compressed_features,
+                      torch::Tensor codebooks, torch::Tensor output,
+                      int64_t output_offset);
+
 torch::Tensor sq_decompress(torch::Tensor codebook_indices,
                             torch::Tensor compressed_features,
                             torch::Tensor codebooks, int64_t feat_dim);
+
+void sq_decompress_v2(torch::Tensor index, int64_t chunk_size,
+                      torch::Tensor compressed_features,
+                      torch::Tensor codebooks, torch::Tensor output,
+                      int64_t output_offset);
 };  // namespace bifeat
 
 #endif
