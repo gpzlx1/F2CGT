@@ -44,11 +44,11 @@ def compute_adj_slope(indptr,
             epoch_time = toc - tic
         except:
             break
+        hit_rate = sum(sampler.get_hit_rates()[1])
         print(
             "Cache rate: {:.3f}, cached num: {}, hit times: {}, epoch time(s): {:.3f}"
-            .format(cache_rate, cache_num,
-                    sampler.get_hit_rates()[1], epoch_time))
-        stats.append((sampler.get_hit_rates()[1], epoch_time * 1000000))
+            .format(cache_rate, cache_num, hit_rate, epoch_time))
+        stats.append((hit_rate, epoch_time * 1000000))
         cache_rate += step
     sampler.clear_cache()
     torch.cuda.empty_cache()
