@@ -341,9 +341,9 @@ def main(args):
     rank = dist.get_rank()
     world_size = dist.get_world_size()
     num_machines = world_size // args.num_trainers
-    assert world_size == args.num_trainers
+    # assert world_size == args.num_trainers
     omp_thread_num = os.cpu_count() // args.num_trainers
-    torch.cuda.set_device(rank)
+    torch.cuda.set_device(rank % args.num_trainers)
     torch.set_num_threads(omp_thread_num)
     print("Set device to {} and cpu threads num {}".format(
         rank, omp_thread_num))

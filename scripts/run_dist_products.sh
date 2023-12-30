@@ -1,0 +1,1 @@
+torchrun --nproc_per_node 8 --master_port 12345 --nnodes 2 --node_rank 0 --master_addr 172.31.24.197 example/train_dist_graphsage_nodeclassification.py --num-trainers 8  --num-epochs 20 --num-hidden 32 --dropout 0.2 --lr 0.003 --root /home/ubuntu/workspace/compressed_dataset/ogbn-products/0 --eval-every 21 --feat-slope 0.000631 --adj-slope 0.093687 --fan-out 12,12,12
