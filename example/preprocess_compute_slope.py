@@ -9,7 +9,7 @@ from load_dataset import load_compressed_dataset
 torch.manual_seed(25)
 
 
-def get_cache_nids(data, args, mem_capacity):
+def get_cache_nids(data, args, mem_capacity, save_memory_mode=False):
     g, metadata = data
 
     adj_space_tensor = bifeat.cache.compute_adj_space_tensor(
@@ -34,8 +34,18 @@ def get_cache_nids(data, args, mem_capacity):
     feature_cache_nids_list, adj_cache_nids = bifeat.cache.cache_idx_select(
         feat_hotness_list, g["adj_hotness"], feat_slope_list, args.adj_slope,
         feat_space_list, adj_space_tensor, mem_capacity)
-    feature_cache_nids_list = [nids.cuda() for nids in feature_cache_nids_list]
+    
+    
+    if save_memory_mode:
+        mask = g["adj_hotness"][adj_cache_nids] > 0
+        adj_cache_nids = adj_cache_nids[mask]
+        feature_cache_nids_list = [nids[feat_hotness_list[i][nids] > 0] for i, nids in enumerate(feature_cache_nids_list)]
+    
+    
     adj_cache_nids = adj_cache_nids.cuda()
+    feature_cache_nids_list = [nids.cuda() for nids in feature_cache_nids_list]
+    
+    
 
     return feature_cache_nids_list, adj_cache_nids
 
