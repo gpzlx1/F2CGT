@@ -254,6 +254,7 @@ def run(rank, world_size, data, args):
             if rank == 0:
                 print("All parts avg val acc {:.4f}, test acc {:.4f}".format(
                     acc_tensor[0].item(), acc_tensor[1].item()))
+            feature_server.reset_hit_counts()
 
     avg_epoch_time = np.mean(epoch_time_log[2:])
     avg_sample_time = np.mean(sample_time_log[2:])

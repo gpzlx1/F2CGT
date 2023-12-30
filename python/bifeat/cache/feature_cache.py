@@ -269,7 +269,7 @@ class FeatureLoadServer:
         else:
             seeds_compressed_features = torch.empty(
                 (0, self._core_compressed_feature.shape[1]),
-                dtype=self._core_compressed_feature.dtype(),
+                dtype=self._core_compressed_feature.dtype,
                 device="cuda")
 
         if self.full_cached:
