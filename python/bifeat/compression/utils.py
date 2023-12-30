@@ -3,7 +3,6 @@ import math
 import numpy as np
 import tqdm
 from .packbits import packbits, unpackbits
-from cuml import KMeans
 
 
 def sq_compress(tensor,
@@ -155,6 +154,9 @@ def vq_compress(tensor,
                 compress_batch_size=100_0000,
                 fake_feat_items=0,
                 fake_feat_dim=0):
+    
+    from cuml import KMeans
+    
     if fake_feat_items > 0 and fake_feat_dim > 0:
         num_items = fake_feat_items
         feat_dim = fake_feat_dim
