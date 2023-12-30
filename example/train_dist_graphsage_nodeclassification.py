@@ -282,10 +282,10 @@ def run(rank, world_size, data, args):
                              avg_forward_time,
                              avg_backward_time,
                              avg_update_time,
-                             np.mean(num_uncached_sample_seeds_log),
-                             np.mean(num_uncached_sample_neighbors_log),
-                             np.mean(num_uncached_feat_frontier_log),
-                             np.mean(num_uncached_feat_seeds_log),
+                             np.mean(num_uncached_sample_seeds_log[2:]),
+                             np.mean(num_uncached_sample_neighbors_log[2:]),
+                             np.mean(num_uncached_feat_frontier_log[2:]),
+                             np.mean(num_uncached_feat_seeds_log[2:]),
                          ))
             print(timetable)
     all_reduce_tensor = torch.tensor([0], device="cuda", dtype=torch.float32)

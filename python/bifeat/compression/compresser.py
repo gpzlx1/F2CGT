@@ -99,6 +99,12 @@ class CompressionManager(object):
         part_size = (self.train_seeds.numel() + world_size - 1) // world_size
         start = rank * part_size
         end = (rank + 1) * part_size
+
+        if rank == 0:
+            self.train_seeds = self.train_seeds[torch.randperm(self.train_seeds.shape[0])]
+        dist.barrier()
+        print(self.train_seeds)
+
         local_train_seeds = self.train_seeds[start:end]
         seeds_loader = SeedGenerator(local_train_seeds,
                                      batch_size,
@@ -149,6 +155,9 @@ class CompressionManager(object):
 
             new_indices = self.src2dst[new_indices]
 
+            print(torch.max(self.adj_hotness[self.train_seeds]))
+            print(torch.min(self.adj_hotness[self.train_seeds]))
+
             self.indptr[:] = new_indptr
             self.indices[:] = new_indices
             self.train_seeds[:] = self.src2dst[self.train_seeds]
@@ -160,6 +169,9 @@ class CompressionManager(object):
             if self.test_idx is not None:
                 self.test_idx[:] = self.src2dst[self.test_idx]
             self.core_idx[:] = self.src2dst[self.core_idx]
+
+            print(torch.max(self.adj_hotness[self.train_seeds]))
+            print(torch.min(self.adj_hotness[self.train_seeds]))
 
             # recovery hotness
             self.hotness[self.train_seeds] -= max_hot
@@ -291,40 +303,15 @@ class CompressionManager(object):
 
     def save_data(self):
         if dist.get_rank() == dist.get_world_size() - 1:
-            metadata = self.shm_manager.graph_meta_data
-            metadata["methods"] = self.methods
-            torch.save(self.shm_manager.graph_meta_data,
-                       os.path.join(self.cache_path, "metadata.pt"))
             torch.save(self.compressed_features,
                        os.path.join(self.cache_path, "compressed_features.pt"))
             torch.save(self.codebooks,
                        os.path.join(self.cache_path, "codebooks.pt"))
-            torch.save(self.labels, os.path.join(self.cache_path, "labels.pt"))
-            torch.save(self.indptr, os.path.join(self.cache_path, "indptr.pt"))
-            torch.save(self.indices, os.path.join(self.cache_path,
-                                                  "indices.pt"))
-            torch.save(self.train_seeds,
-                       os.path.join(self.cache_path, "train_idx.pt"))
-            torch.save(self.adj_hotness,
-                       os.path.join(self.cache_path, "adj_hotness.pt"))
-            torch.save(self.feat_hotness,
-                       os.path.join(self.cache_path, "feat_hotness.pt"))
-
             torch.save(
                 self.compressed_core_feature,
                 os.path.join(self.cache_path, "compressed_core_features.pt"))
             torch.save(self.core_codebook,
                        os.path.join(self.cache_path, "core_codebooks.pt"))
-            torch.save(self.core_idx,
-                       os.path.join(self.cache_path, "core_idx.pt"))
-
-            if self.valid_idx is not None:
-                torch.save(self.valid_idx,
-                           os.path.join(self.cache_path, "valid_idx.pt"))
-            if self.test_idx is not None:
-                torch.save(self.test_idx,
-                           os.path.join(self.cache_path, "test_idx.pt"))
-
             self.compressed_graph_size = 0
             self.compressed_graph_size += self.compressed_features.numel(
             ) * self.compressed_features.element_size()
@@ -360,3 +347,35 @@ class CompressionManager(object):
                 "Original graph size {:.3f} GB, compressed graph size {:.3f} GB"
                 .format(self.original_graph_size / 1024 / 1024 / 1024,
                         self.compressed_graph_size / 1024 / 1024 / 1024))
+
+        if self.shm_manager._is_chief:
+            print(torch.max(self.adj_hotness[self.train_seeds]))
+            print(torch.min(self.adj_hotness[self.train_seeds]))
+
+            metadata = self.shm_manager.graph_meta_data
+            metadata["methods"] = self.methods
+            torch.save(self.shm_manager.graph_meta_data,
+                       os.path.join(self.cache_path, "metadata.pt"))
+            
+            torch.save(self.labels, os.path.join(self.cache_path, "labels.pt"))
+            torch.save(self.indptr, os.path.join(self.cache_path, "indptr.pt"))
+            torch.save(self.indices, os.path.join(self.cache_path,
+                                                  "indices.pt"))
+            torch.save(self.train_seeds,
+                       os.path.join(self.cache_path, "train_idx.pt"))
+            torch.save(self.adj_hotness,
+                       os.path.join(self.cache_path, "adj_hotness.pt"))
+            torch.save(self.feat_hotness,
+                       os.path.join(self.cache_path, "feat_hotness.pt"))
+
+            torch.save(self.core_idx,
+                       os.path.join(self.cache_path, "core_idx.pt"))
+
+            if self.valid_idx is not None:
+                torch.save(self.valid_idx,
+                           os.path.join(self.cache_path, "valid_idx.pt"))
+            if self.test_idx is not None:
+                torch.save(self.test_idx,
+                           os.path.join(self.cache_path, "test_idx.pt"))
+
+        dist.barrier(self.shm_manager._local_group)
