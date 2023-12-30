@@ -89,6 +89,9 @@ def run(rank, world_size, data, args):
         num_uncached_feat_frontier = 0
         num_uncached_feat_seeds = 0
 
+        if args.breakdown:
+            dist.barrier()
+            torch.cuda.synchronize()
         epoch_tic = time.time()
 
         model.train()
@@ -347,7 +350,16 @@ def main(args):
     assert args.feat_slope is not None
     assert args.adj_slope is not None
 
-    g, metadata, codebooks = load_compressed_dataset(args.root, args.dataset)
+    if args.dataset == "friendster":
+        g, metadata, codebooks = load_compressed_dataset(args.root,
+                                                         args.dataset,
+                                                         with_valid=False,
+                                                         with_test=False)
+    else:
+        g, metadata, codebooks = load_compressed_dataset(args.root,
+                                                         args.dataset,
+                                                         with_valid=True,
+                                                         with_test=True)
     train_nids = g.pop("train_idx")
     train_nids = train_nids[torch.randperm(train_nids.shape[0])]
     data = g, train_nids, metadata, codebooks
