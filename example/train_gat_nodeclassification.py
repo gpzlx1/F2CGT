@@ -81,7 +81,6 @@ def run(rank, world_size, data, args):
 
         model.train()
         for it, seed_nids in enumerate(dataloader):
-
             num_iters += 1
             if args.breakdown:
                 dist.barrier()
@@ -139,12 +138,13 @@ def run(rank, world_size, data, args):
                 feature_cache_nids_list, adj_cache_nids = get_cache_nids(
                     (g, metadata), args, mem_capacity)
                 torch.cuda.empty_cache()
-                feature_server.cache_feature(feature_cache_nids_list[0])
-                feature_server.cache_core_feature(torch.arange(10).long())
+                feature_server.cache_feature(feature_cache_nids_list[1])
+                feature_server.cache_core_feature(feature_cache_nids_list[0])
                 sampler.cache_data(adj_cache_nids)
                 cache_toc = time.time()
                 print("Rank {} builds cache time = {:.3f} sec".format(
                     rank, cache_toc - cache_tic))
+                torch.cuda.empty_cache()
 
             if (it + 1) % args.log_every == 0:
                 acc = compute_acc(batch_pred, batch_labels)

@@ -21,7 +21,7 @@ BiFeatHashmaps::BiFeatHashmaps(int64_t hashmap_num,
                                std::vector<torch::Tensor> cache_nids) {
   memory_usage_ = 0;
   hashmap_num_ = hashmap_num;
-  CHECK(cache_nids.size() == hashmap_num_);
+  CHECK((int64_t)cache_nids.size() == hashmap_num_);
   CHECK(hashmap_num_ <= 2);
 
   for (int i = 0; i < hashmap_num_; i++) {

@@ -11,24 +11,25 @@ torch.manual_seed(25)
 
 def get_cache_nids(data, args, mem_capacity):
     g, metadata = data
+
     adj_space_tensor = bifeat.cache.compute_adj_space_tensor(
         g["indptr"], g["indptr"].dtype, g["indices"].dtype)
-    compressed_features = [g["features"]]
+
+    features = [g["core_features"], g["features"]]
     feat_hotness = g["feat_hotness"]
-    num_feat_parts = len(compressed_features)
-    feat_part_size = torch.tensor([metadata["num_nodes"]], dtype=torch.long)
+    num_feat_parts = len(features)
+    feat_part_size = torch.tensor(
+        [g["core_idx"].shape[0], metadata["num_nodes"]], dtype=torch.long)
     feat_part_range = torch.zeros(num_feat_parts + 1, dtype=torch.long)
     feat_part_range[1:] = torch.cumsum(feat_part_size, dim=0)
-    feat_hotness_list = [None for _ in range(num_feat_parts)]
+    feat_hotness_list = [feat_hotness[g["core_idx"]], feat_hotness]
     feat_space_list = [0 for _ in range(num_feat_parts)]
     feat_slope_list = [0.0 for _ in range(num_feat_parts)]
     for i in range(num_feat_parts):
-        feat_hotness_list[i] = feat_hotness[
-            feat_part_range[i]:feat_part_range[i + 1]]
         feat_space_list[i] = bifeat.cache.compute_feat_sapce(
-            compressed_features[i].shape[1], compressed_features[i].dtype)
+            features[i].shape[1], features[i].dtype)
         feat_slope_list[i] = args.feat_slope / 4 * dtype_sizeof(
-            compressed_features[i].dtype) * compressed_features[i].shape[1]
+            features[i].dtype) * features[i].shape[1]
 
     feature_cache_nids_list, adj_cache_nids = bifeat.cache.cache_idx_select(
         feat_hotness_list, g["adj_hotness"], feat_slope_list, args.adj_slope,
