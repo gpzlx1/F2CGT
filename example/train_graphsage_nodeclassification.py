@@ -13,6 +13,32 @@ import argparse
 
 torch.manual_seed(25)
 
+# def presampling(g, train_nids, sampler, batch_size):
+#     adj_hotness = torch.zeros(g["indptr"].numel() - 1,
+#                               device='cuda',
+#                               dtype=torch.float32)
+#     feat_hotness = torch.zeros(g["indptr"].numel() - 1,
+#                                device='cuda',
+#                                dtype=torch.float32)
+
+#     seeds_loader = bifeat.dataloading.SeedGenerator(train_nids,
+#                                                     batch_size,
+#                                                     shuffle=True)
+
+#     import dgl
+#     for it, seeds in enumerate(seeds_loader):
+#         frontier, _, blocks = sampler.sample_neighbors(seeds)
+#         for block in blocks:
+#             adj_hotness[block.dstdata[dgl.NID]] += 1
+#         feat_hotness[frontier] += 1
+
+#     dist.all_reduce(adj_hotness, op=dist.ReduceOp.SUM)
+#     dist.all_reduce(feat_hotness, op=dist.ReduceOp.SUM)
+#     adj_hotness = adj_hotness.cpu()
+#     feat_hotness = feat_hotness.cpu()
+
+#     return adj_hotness, feat_hotness
+
 
 def run(rank, world_size, data, args):
     torch.cuda.set_device(rank)
@@ -35,6 +61,13 @@ def run(rank, world_size, data, args):
                                                 g["indices"],
                                                 fan_out,
                                                 count_hit=True)
+
+    # print("Presampling")
+    # adj_hotness, feat_hotness = presampling(g, local_train_nids, sampler,
+    #                                         args.batch_size)
+    # g["adj_hotness"] = adj_hotness
+    # g["feat_hotness"] = feat_hotness
+
     feature_decompresser = bifeat.compression.Decompresser(
         metadata["feature_dim"], codebooks, metadata["methods"],
         [g["core_idx"].shape[0], metadata["num_nodes"]])
@@ -120,12 +153,13 @@ def run(rank, world_size, data, args):
             torch.cuda.synchronize()
             update_time += time.time() - tic
 
-            if feature_server.no_cached and sampler.no_cached:
+            if not feature_server.cache_built and not sampler.cache_built:
                 mem_capacity = torch.cuda.mem_get_info(
                     torch.cuda.current_device(
                     ))[1] - torch.cuda.max_memory_allocated(
                     ) - args.reserved_mem * 1024 * 1024 * 1024 - g[
                         "core_idx"].shape[0] * 12 * 4
+                mem_capacity = max(mem_capacity, 0)
                 print("Rank {} builds cache, GPU mem capacity = {:.3f} GB".
                       format(rank, mem_capacity / 1024 / 1024 / 1024))
                 cache_tic = time.time()

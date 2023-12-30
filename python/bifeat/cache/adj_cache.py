@@ -35,6 +35,7 @@ class StructureCacheServer:
 
         self.full_cached = False
         self.no_cached = True
+        self.cache_built = False
 
         self._fan_out = fan_out
         self._count_hit = count_hit
@@ -51,6 +52,8 @@ class StructureCacheServer:
 
     def cache_data(self, cache_nids):
         start = time.time()
+
+        self.cache_built = True
 
         if cache_nids.shape[0] >= self.indptr.shape[0] - 1:
             self.full_cached = True
@@ -113,6 +116,8 @@ class StructureCacheServer:
             self.device_id, hashmap_size / 1024 / 1024 / 1024))
 
     def clear_cache(self):
+        self.cache_built = False
+
         self.cached_indptr = None
         self.cached_indices = None
 
