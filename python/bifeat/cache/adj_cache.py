@@ -29,8 +29,9 @@ class StructureCacheServer:
 
         self.device_id = torch.cuda.current_device()
 
-        self.cached_nids_hashed = None
-        self.cached_nids_in_gpu_hashed = None
+        # self.cached_nids_hashed = None
+        # self.cached_nids_in_gpu_hashed = None
+        self._hashmap = None
 
         self.full_cached = False
         self.no_cached = True
@@ -70,8 +71,9 @@ class StructureCacheServer:
         else:
             self.no_cached = False
             cache_nids = cache_nids.cuda(self.device_id)
-            self.cached_nids_hashed, self.cached_nids_in_gpu_hashed = capi._CAPI_create_hashmap(
-                cache_nids)
+            # self.cached_nids_hashed, self.cached_nids_in_gpu_hashed = capi._CAPI_create_hashmap(
+            #     cache_nids)
+            self._hashmap = capi.BiFeatHashmaps(1, [cache_nids.int().cuda()])
 
             self.cached_indptr = capi._CAPI_get_sub_indptr(
                 cache_nids, self.indptr).cuda(self.device_id)
@@ -85,10 +87,11 @@ class StructureCacheServer:
             indices_cached_size = self.cached_indices.element_size(
             ) * self.cached_indices.numel()
 
-            hashmap_size = self.cached_nids_hashed.numel(
-            ) * self.cached_nids_hashed.element_size()
-            hashmap_size += self.cached_nids_in_gpu_hashed.numel(
-            ) * self.cached_nids_in_gpu_hashed.element_size()
+            # hashmap_size = self.cached_nids_hashed.numel(
+            # ) * self.cached_nids_hashed.element_size()
+            # hashmap_size += self.cached_nids_in_gpu_hashed.numel(
+            # ) * self.cached_nids_in_gpu_hashed.element_size()
+            hashmap_size = self._hashmap.get_memory_usage()
 
         end = time.time()
 
@@ -111,8 +114,9 @@ class StructureCacheServer:
         self.cached_indptr = None
         self.cached_indices = None
 
-        self.cached_nids_hashed = None
-        self.cached_nids_in_gpu_hashed = None
+        # self.cached_nids_hashed = None
+        # self.cached_nids_in_gpu_hashed = None
+        self._hashmap = None
 
         self.full_cached = False
         self.no_cached = False
@@ -129,6 +133,10 @@ class StructureCacheServer:
                 self.hit_times,
                 self.hit_times / self.access_times,
             )
+
+    def reset_hit_counts(self):
+        self.access_times = 0
+        self.hit_times = 0
 
     def sample_neighbors(self, seeds_nids, replace=False):
         seeds = seeds_nids.cuda(self.device_id)
@@ -151,19 +159,17 @@ class StructureCacheServer:
                     seeds, self.indptr, self.indices, num_picks, replace)
 
             else:
-                if self._count_hit:
-                    self.access_times += seeds.shape[0]
-                    # self.hit_times += capi._CAPI_count_cached_nids(
-                    #     seeds, self.cached_nids_hashed,
-                    #     self.cached_nids_in_gpu_hashed)
-                    self.hit_times += torch.sum(
-                        capi._CAPI_search_hashmap(
-                            self.cached_nids_hashed, self.
-                            cached_nids_in_gpu_hashed, seeds) != -1).item()
+                # local_nids = capi._CAPI_search_hashmap(
+                #     self.cached_nids_hashed, self.cached_nids_in_gpu_hashed,
+                #     seeds).int()
+                local_nids = self._hashmap.query(seeds, 0)
                 coo_row, coo_col = capi._CAPI_cuda_sample_neighbors_with_caching(
                     seeds, self.cached_indptr, self.indptr,
-                    self.cached_indices, self.indices, self.cached_nids_hashed,
-                    self.cached_nids_in_gpu_hashed, num_picks, replace)
+                    self.cached_indices, self.indices, local_nids, num_picks,
+                    replace)
+                if self._count_hit:
+                    self.access_times += seeds.shape[0]
+                    self.hit_times += torch.sum(local_nids >= 0).item()
 
             frontier, (coo_row, coo_col) = capi._CAPI_cuda_tensor_relabel(
                 [seeds, coo_col], [coo_row, coo_col])

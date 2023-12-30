@@ -31,15 +31,18 @@ def run(rank, world_size, data, args):
                                   train_part_size]
     fan_out = [int(fanout) for fanout in args.fan_out.split(",")]
 
-    sampler = bifeat.cache.StructureCacheServer(g["indptr"], g["indices"],
-                                                fan_out)
+    sampler = bifeat.cache.StructureCacheServer(g["indptr"],
+                                                g["indices"],
+                                                fan_out,
+                                                count_hit=True)
     feature_decompresser = bifeat.compression.Decompresser(
         metadata["feature_dim"], codebooks, metadata["methods"],
         [g["core_idx"].shape[0], metadata["num_nodes"]])
     feature_server = bifeat.cache.FeatureLoadServer(g["core_features"],
                                                     g["core_idx"],
                                                     g["features"],
-                                                    feature_decompresser)
+                                                    feature_decompresser,
+                                                    count_hit=True)
     dataloader = bifeat.dataloading.SeedGenerator(local_train_nids,
                                                   args.batch_size,
                                                   shuffle=True)

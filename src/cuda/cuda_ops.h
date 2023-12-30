@@ -29,8 +29,7 @@ std::tuple<torch::Tensor, torch::Tensor> RowWiseSamplingUniformCUDA(
 std::tuple<torch::Tensor, torch::Tensor> RowWiseSamplingUniformWithCachingCUDA(
     torch::Tensor seeds, torch::Tensor gpu_indptr, torch::Tensor cpu_indptr,
     torch::Tensor gpu_indices, torch::Tensor cpu_indices,
-    torch::Tensor orig_nids_hashed, torch::Tensor gpu_nids_hashed,
-    int64_t num_picks, bool replace);
+    torch::Tensor cache_index, int64_t num_picks, bool replace);
 std::tuple<torch::Tensor, std::vector<torch::Tensor>> TensorRelabelCUDA(
     std::vector<torch::Tensor> mapping_tensors,
     std::vector<torch::Tensor> requiring_relabel_tensors);

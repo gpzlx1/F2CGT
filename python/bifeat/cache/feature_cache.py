@@ -73,19 +73,15 @@ class FeatureCacheServer:
                 self.access_times += index.shape[0]
             return capi._CAPI_fetch_feature_data(self.feature, index)
         else:
-            if self._count_hit:
-                self.access_times += index.shape[0]
-                # self.hit_times += capi._CAPI_count_cached_nids(
-                #     index, self.hashmap_key, self.hashmap_value)
-                self.hit_times += torch.sum(
-                    capi._CAPI_search_hashmap(self.hashmap_key,
-                                              self.hashmap_value, index) !=
-                    -1).item()
-
             index = index.int()
             local_nids = self._hashmap.query(index, 0)
             result = capi._CAPI_fetch_feature_data_with_caching_v2(
                 self.feature, self.cached_feature, index, local_nids)
+
+            if self._count_hit:
+                self.access_times += index.shape[0]
+                self.hit_times += torch.sum(local_nids >= 0).item()
+
             return result
 
     def clear_cache(self):
@@ -110,11 +106,19 @@ class FeatureCacheServer:
                 self.hit_times / self.access_times,
             )
 
+    def reset_hit_counts(self):
+        self.access_times = 0
+        self.hit_times = 0
+
 
 class FeatureLoadServer:
 
-    def __init__(self, core_compressed_feature, core_idx, compressed_feature,
-                 decompresser):
+    def __init__(self,
+                 core_compressed_feature,
+                 core_idx,
+                 compressed_feature,
+                 decompresser,
+                 count_hit=False):
         self._core_compressed_feature = core_compressed_feature
         self._compressed_feature = compressed_feature
         self._core_idx = core_idx
@@ -129,6 +133,12 @@ class FeatureLoadServer:
 
         self.core_full_cached = False
         self.core_no_cached = True
+
+        self.access_times = 0
+        self.core_hit_times = 0
+        self.other_hit_times = 0
+
+        self._count_hit = count_hit
 
         self._core_hash_map = capi.BiFeatHashmaps(
             1, [self._core_idx.int().cuda()])
@@ -232,11 +242,16 @@ class FeatureLoadServer:
         index, seeds_num = data
         index = index.cuda().int()
 
+        if self._count_hit:
+            self.access_times += index.shape[0]
+
         if seeds_num > 0:
             searched_seeds_index = self._core_hash_map.query(
                 index[:seeds_num], 0)
 
             if self.core_full_cached:
+                if self._count_hit:
+                    self.core_hit_times += seeds_num
                 seeds_compressed_features = self._core_cached_feature[
                     searched_seeds_index.long()]
             elif self.core_no_cached:
@@ -248,6 +263,8 @@ class FeatureLoadServer:
                 seeds_compressed_features = capi._CAPI_fetch_feature_data_with_caching_v2(
                     self._core_compressed_feature, self._core_cached_feature,
                     searched_seeds_index, cache_nids)
+                if self._count_hit:
+                    self.core_hit_times += torch.sum(cache_nids >= 0).item()
 
         else:
             seeds_compressed_features = torch.empty(
@@ -256,6 +273,8 @@ class FeatureLoadServer:
                 device="cuda")
 
         if self.full_cached:
+            if self._count_hit:
+                self.other_hit_times += index.shape[0] - seeds_num
             frontier_compressed_features = self._cached_feature[
                 index[seeds_num:].long()]
         elif self.no_cached:
@@ -266,6 +285,8 @@ class FeatureLoadServer:
             frontier_compressed_features = capi._CAPI_fetch_feature_data_with_caching_v2(
                 self._compressed_feature, self._cached_feature,
                 index[seeds_num:], local_nids)
+            if self._count_hit:
+                self.other_hit_times += torch.sum(local_nids >= 0).item()
 
         result = torch.empty((index.numel(), self._decompresser.feat_dim),
                              dtype=torch.float,
@@ -277,3 +298,20 @@ class FeatureLoadServer:
                                          seeds_num)
 
         return result
+
+    def get_hit_rates(self):
+        if self.access_times == 0:
+            return (0, 0, 0.0, 0, 0.0)
+        else:
+            return (
+                self.access_times,
+                self.core_hit_times,
+                self.core_hit_times / self.access_times,
+                self.other_hit_times,
+                self.other_hit_times / self.access_times,
+            )
+
+    def reset_hit_counts(self):
+        self.access_times = 0
+        self.core_hit_times = 0
+        self.other_hit_times = 0

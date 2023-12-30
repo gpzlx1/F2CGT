@@ -45,8 +45,8 @@ PYBIND11_MODULE(BiFeatLib, m) {
       .def("_CAPI_cuda_sample_neighbors_with_caching",
            &RowWiseSamplingUniformWithCachingCUDA, py::arg("seeds"),
            py::arg("gpu_indptr"), py::arg("cpu_indptr"), py::arg("gpu_indices"),
-           py::arg("cpu_indices"), py::arg("hash_key"), py::arg("hash_val"),
-           py::arg("num_picks"), py::arg("replace"))
+           py::arg("cpu_indices"), py::arg("cache_index"), py::arg("num_picks"),
+           py::arg("replace"))
       .def("_CAPI_cuda_tensor_relabel", &TensorRelabelCUDA,
            py::arg("mapping_tensors"), py::arg("requiring_relabel_tensors"))
       .def("_CAPI_get_sub_indptr", &GetSubIndptr, py::arg("nids"),
