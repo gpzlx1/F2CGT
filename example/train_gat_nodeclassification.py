@@ -127,27 +127,6 @@ def run(rank, world_size, data, args):
             torch.cuda.synchronize()
             update_time += time.time() - tic
 
-            if not feature_server.cache_built and not sampler.cache_built:
-                mem_capacity = torch.cuda.mem_get_info(
-                    torch.cuda.current_device(
-                    ))[1] - torch.cuda.max_memory_allocated(
-                    ) - args.reserved_mem * 1024 * 1024 * 1024 - g[
-                        "core_idx"].shape[0] * 12 * 4
-                mem_capacity = max(mem_capacity, 0)
-                print("Rank {} builds cache, GPU mem capacity = {:.3f} GB".
-                      format(rank, mem_capacity / 1024 / 1024 / 1024))
-                cache_tic = time.time()
-                feature_cache_nids_list, adj_cache_nids = get_cache_nids(
-                    (g, metadata), args, mem_capacity)
-                torch.cuda.empty_cache()
-                feature_server.cache_feature(feature_cache_nids_list[1])
-                feature_server.cache_core_feature(feature_cache_nids_list[0])
-                sampler.cache_data(adj_cache_nids)
-                cache_toc = time.time()
-                print("Rank {} builds cache time = {:.3f} sec".format(
-                    rank, cache_toc - cache_tic))
-                torch.cuda.empty_cache()
-
             if (it + 1) % args.log_every == 0:
                 acc = compute_acc(batch_pred, batch_labels)
                 gpu_mem_alloc = (torch.cuda.max_memory_allocated() /
@@ -164,6 +143,34 @@ def run(rank, world_size, data, args):
                         train_acc_tensor[0].item()))
 
         epoch_toc = time.time()
+        
+        # build cache
+        if not feature_server.cache_built and not sampler.cache_built:
+            print("GPU memory usage",
+                  torch.cuda.memory_allocated() / 1024 / 1024 / 1024,
+                  torch.cuda.max_memory_allocated() / 1024 / 1024 / 1024,
+                  torch.cuda.memory_reserved() / 1024 / 1024 / 1024,
+                  torch.cuda.max_memory_reserved() / 1024 / 1024 / 1024)
+
+            mem_capacity = torch.cuda.mem_get_info(torch.cuda.current_device(
+            ))[1] - torch.cuda.max_memory_reserved(
+            ) - args.reserved_mem * 1024 * 1024 * 1024 - g["core_idx"].shape[
+                0] * 12 * 4
+            mem_capacity = max(mem_capacity, 0)
+            
+            if mem_capacity > 0:
+                print("Rank {} builds cache, GPU mem capacity = {:.3f} GB".format(
+                    rank, mem_capacity / 1024 / 1024 / 1024))
+                cache_tic = time.time()
+                feature_cache_nids_list, adj_cache_nids = get_cache_nids(
+                    (g, metadata), args, mem_capacity)
+                feature_server.cache_core_feature(feature_cache_nids_list[0])
+                feature_server.cache_feature(feature_cache_nids_list[1])
+                sampler.cache_data(adj_cache_nids)
+                cache_toc = time.time()
+                print("Rank {} builds cache time = {:.3f} sec".format(
+                    rank, cache_toc - cache_tic))
+        
         sample_access_times, sample_hit_times, _ = sampler.get_hit_rates()
         sampler.reset_hit_counts()
         for l in range(len(fan_out)):
