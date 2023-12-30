@@ -31,15 +31,18 @@ def run(rank, world_size, data, args):
                                   train_part_size]
     fan_out = [int(fanout) for fanout in args.fan_out.split(",")]
 
-    sampler = bifeat.cache.StructureCacheServer(g["indptr"], g["indices"],
-                                                fan_out)
+    sampler = bifeat.cache.StructureCacheServer(g["indptr"],
+                                                g["indices"],
+                                                fan_out,
+                                                count_hit=True)
     feature_decompresser = bifeat.compression.Decompresser(
         metadata["feature_dim"], codebooks, metadata["methods"],
         [g["core_idx"].shape[0], metadata["num_nodes"]])
     feature_server = bifeat.cache.FeatureLoadServer(g["core_features"],
                                                     g["core_idx"],
                                                     g["features"],
-                                                    feature_decompresser)
+                                                    feature_decompresser,
+                                                    count_hit=True)
     dataloader = bifeat.dataloading.SeedGenerator(local_train_nids,
                                                   args.batch_size,
                                                   shuffle=True)
@@ -67,6 +70,11 @@ def run(rank, world_size, data, args):
     forward_time_log = []
     backward_time_log = []
     update_time_log = []
+    num_uncached_sample_seeds_log = []
+    num_uncached_sample_neighbors_log = []
+    num_uncached_feat_frontier_log = []
+    num_uncached_feat_seeds_log = []
+
     for epoch in range(args.num_epochs):
         sample_time = 0
         load_time = 0
@@ -76,6 +84,10 @@ def run(rank, world_size, data, args):
         num_seeds = 0
         num_inputs = 0
         num_iters = 0
+        num_uncached_sample_seeds = 0
+        num_uncached_sample_neighbors = 0
+        num_uncached_feat_frontier = 0
+        num_uncached_feat_seeds = 0
 
         epoch_tic = time.time()
 
@@ -162,6 +174,24 @@ def run(rank, world_size, data, args):
                         train_acc_tensor[0].item()))
 
         epoch_toc = time.time()
+        sample_access_times, sample_hit_times, _ = sampler.get_hit_rates()
+        sampler.reset_hit_counts()
+        for l in range(len(fan_out)):
+            num_layer_uncached_seeds = sample_access_times[
+                l] - sample_hit_times[l]
+            num_uncached_sample_seeds += num_layer_uncached_seeds
+            num_uncached_sample_neighbors += num_layer_uncached_seeds * fan_out[
+                l]
+        (
+            _,
+            feat_seeds_hit_times,
+            _,
+            feat_frontier_hit_times,
+            _,
+        ) = feature_server.get_hit_rates()
+        feature_server.reset_hit_counts()
+        num_uncached_feat_frontier += num_inputs - num_seeds - feat_frontier_hit_times
+        num_uncached_feat_seeds += num_seeds - feat_seeds_hit_times
 
         for i in range(args.num_trainers):
             dist.barrier()
@@ -176,6 +206,10 @@ def run(rank, world_size, data, args):
                              "#seeds: {}\n"
                              "#inputs: {}\n"
                              "#iterations: {}\n"
+                             "num_uncached_sample_seeds: {}\n"
+                             "num_uncached_sample_neighbors: {}\n"
+                             "num_uncached_feat_frontier: {}\n"
+                             "num_uncached_feat_seeds: {}\n"
                              "=====================".format(
                                  rank,
                                  epoch_toc - epoch_tic,
@@ -187,6 +221,10 @@ def run(rank, world_size, data, args):
                                  num_seeds,
                                  num_inputs,
                                  num_iters,
+                                 num_uncached_sample_seeds,
+                                 num_uncached_sample_neighbors,
+                                 num_uncached_feat_frontier,
+                                 num_uncached_feat_seeds,
                              ))
                 print(timetable)
         sample_time_log.append(sample_time)
@@ -195,6 +233,10 @@ def run(rank, world_size, data, args):
         backward_time_log.append(backward_time)
         update_time_log.append(update_time)
         epoch_time_log.append(epoch_toc - epoch_tic)
+        num_uncached_sample_neighbors_log.append(num_uncached_sample_neighbors)
+        num_uncached_sample_seeds_log.append(num_uncached_sample_seeds)
+        num_uncached_feat_frontier_log.append(num_uncached_feat_frontier)
+        num_uncached_feat_seeds_log.append(num_uncached_feat_seeds)
 
         if (epoch + 1) % args.eval_every == 0:
             tic = time.time()
@@ -235,6 +277,10 @@ def run(rank, world_size, data, args):
                          "Forward Time(s): {:.4f}\n"
                          "Backward Time(s): {:.4f}\n"
                          "Update Time(s): {:.4f}\n"
+                         "num_uncached_sample_seeds: {}\n"
+                         "num_uncached_sample_neighbors: {}\n"
+                         "num_uncached_feat_frontier: {}\n"
+                         "num_uncached_feat_seeds: {}\n"
                          "=====================".format(
                              rank,
                              avg_epoch_time,
@@ -243,6 +289,10 @@ def run(rank, world_size, data, args):
                              avg_forward_time,
                              avg_backward_time,
                              avg_update_time,
+                             np.mean(num_uncached_sample_seeds_log),
+                             np.mean(num_uncached_sample_neighbors_log),
+                             np.mean(num_uncached_feat_frontier_log),
+                             np.mean(num_uncached_feat_seeds_log),
                          ))
             print(timetable)
     all_reduce_tensor = torch.tensor([0], device="cuda", dtype=torch.float32)
@@ -301,6 +351,11 @@ def main(args):
     train_nids = g.pop("train_idx")
     train_nids = train_nids[torch.randperm(train_nids.shape[0])]
     data = g, train_nids, metadata, codebooks
+
+    print("Core feature: dim {} dtype {}".format(g["core_features"].shape[1],
+                                                 g["core_features"].dtype))
+    print("Frontier feature: dim {} dtype {}".format(g["features"].shape[1],
+                                                     g["features"].dtype))
 
     import torch.multiprocessing as mp
     mp.spawn(run,

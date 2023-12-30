@@ -39,8 +39,10 @@ class StructureCacheServer:
         self._fan_out = fan_out
         self._count_hit = count_hit
 
-        self.access_times = 0
-        self.hit_times = 0
+        self._num_layers = len(fan_out)
+
+        self.access_times = [0 for i in range(self._num_layers)]
+        self.hit_times = [0 for i in range(self._num_layers)]
 
     def __del__(self):
         if self._pin_memory:
@@ -121,40 +123,48 @@ class StructureCacheServer:
         self.full_cached = False
         self.no_cached = False
 
-        self.access_times = 0
-        self.hit_times = 0
+        self.access_times = [0 for i in range(self._num_layers)]
+        self.hit_times = [0 for i in range(self._num_layers)]
 
     def get_hit_rates(self):
-        if self.access_times == 0:
-            return (0, 0, 0.0)
+        if self.access_times[-1] == 0:
+            return ([0 for i in range(self._num_layers)
+                     ], [0 for i in range(self._num_layers)],
+                    [0.0 for i in range(self._num_layers)])
         else:
+            hit_rates = [
+                self.hit_times[i] / self.access_times[i]
+                for i in range(self._num_layers)
+            ]
             return (
                 self.access_times,
                 self.hit_times,
-                self.hit_times / self.access_times,
+                hit_rates,
             )
 
     def reset_hit_counts(self):
-        self.access_times = 0
-        self.hit_times = 0
+        self.access_times = [0 for i in range(self._num_layers)]
+        self.hit_times = [0 for i in range(self._num_layers)]
 
     def sample_neighbors(self, seeds_nids, replace=False):
         seeds = seeds_nids.cuda(self.device_id)
         blocks = []
 
-        for num_picks in reversed(self._fan_out):
+        for i, num_picks in enumerate(reversed(self._fan_out)):
 
             if self.full_cached:
                 if self._count_hit:
-                    self.access_times += seeds.shape[0]
-                    self.hit_times += seeds.shape[0]
+                    self.access_times[self._num_layers - 1 -
+                                      i] += seeds.shape[0]
+                    self.hit_times[self._num_layers - 1 - i] += seeds.shape[0]
                 coo_row, coo_col = capi._CAPI_cuda_sample_neighbors(
                     seeds, self.cached_indptr, self.cached_indices, num_picks,
                     replace)
 
             elif self.no_cached:
                 if self._count_hit:
-                    self.access_times += seeds.shape[0]
+                    self.access_times[self._num_layers - 1 -
+                                      i] += seeds.shape[0]
                 coo_row, coo_col = capi._CAPI_cuda_sample_neighbors(
                     seeds, self.indptr, self.indices, num_picks, replace)
 
@@ -168,8 +178,10 @@ class StructureCacheServer:
                     self.cached_indices, self.indices, local_nids, num_picks,
                     replace)
                 if self._count_hit:
-                    self.access_times += seeds.shape[0]
-                    self.hit_times += torch.sum(local_nids >= 0).item()
+                    self.access_times[self._num_layers - 1 -
+                                      i] += seeds.shape[0]
+                    self.hit_times[self._num_layers - 1 -
+                                   i] += torch.sum(local_nids >= 0).item()
 
             frontier, (coo_row, coo_col) = capi._CAPI_cuda_tensor_relabel(
                 [seeds, coo_col], [coo_row, coo_col])
