@@ -141,12 +141,13 @@ def run(rank, world_size, data, args):
                 torch.cuda.synchronize()
             update_time += time.time() - tic
 
-            if feature_server.no_cached and sampler.no_cached:
+            if not feature_server.cache_built and not sampler.cache_built:
                 mem_capacity = torch.cuda.mem_get_info(
                     torch.cuda.current_device(
                     ))[1] - torch.cuda.max_memory_allocated(
                     ) - args.reserved_mem * 1024 * 1024 * 1024 - g[
                         "core_idx"].shape[0] * 12 * 4
+                mem_capacity = max(mem_capacity, 0)
                 print("Rank {} builds cache, GPU mem capacity = {:.3f} GB".
                       format(rank, mem_capacity / 1024 / 1024 / 1024))
                 cache_tic = time.time()

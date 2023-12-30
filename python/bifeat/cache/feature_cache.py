@@ -130,6 +130,7 @@ class FeatureLoadServer:
 
         self.full_cached = False
         self.no_cached = True
+        self.cache_built = False
 
         self.core_full_cached = False
         self.core_no_cached = True
@@ -152,6 +153,7 @@ class FeatureLoadServer:
 
     def cache_feature(self, cache_nids):
         start = time.time()
+        self.cache_built = True
 
         if cache_nids.shape[0] == self._compressed_feature.shape[0]:
             self.full_cached = True
