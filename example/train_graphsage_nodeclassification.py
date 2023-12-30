@@ -115,23 +115,17 @@ def run(rank, world_size, data, args):
         num_uncached_feat_frontier = 0
         num_uncached_feat_seeds = 0
 
-        if args.breakdown:
-            dist.barrier()
-            torch.cuda.synchronize()
+        torch.cuda.synchronize()
         epoch_tic = time.time()
 
         model.train()
         for it, seed_nids in enumerate(dataloader):
             num_iters += 1
-            if args.breakdown:
-                dist.barrier()
-                torch.cuda.synchronize()
+            torch.cuda.synchronize()
 
             tic = time.time()
             frontier, seeds, blocks = sampler.sample_neighbors(seed_nids)
-            if args.breakdown:
-                dist.barrier()
-                torch.cuda.synchronize()
+            torch.cuda.synchronize()
             sample_time += time.time() - tic
 
             num_seeds += seeds.shape[0]
@@ -139,32 +133,24 @@ def run(rank, world_size, data, args):
             tic = time.time()
             batch_inputs = feature_server[frontier, seeds.shape[0]]
             batch_labels = g["labels"][seeds.cpu()].long().cuda()
-            if args.breakdown:
-                dist.barrier()
-                torch.cuda.synchronize()
+            torch.cuda.synchronize()
 
             load_time += time.time() - tic
             tic = time.time()
             batch_pred = model(blocks, batch_inputs)
             loss = loss_fcn(batch_pred, batch_labels)
-            if args.breakdown:
-                dist.barrier()
-                torch.cuda.synchronize()
+            torch.cuda.synchronize()
 
             forward_time += time.time() - tic
             tic = time.time()
             optimizer.zero_grad()
             loss.backward()
-            if args.breakdown:
-                dist.barrier()
-                torch.cuda.synchronize()
+            torch.cuda.synchronize()
 
             backward_time += time.time() - tic
             tic = time.time()
             optimizer.step()
-            if args.breakdown:
-                dist.barrier()
-                torch.cuda.synchronize()
+            torch.cuda.synchronize()
             update_time += time.time() - tic
 
             if not feature_server.cache_built and not sampler.cache_built:
