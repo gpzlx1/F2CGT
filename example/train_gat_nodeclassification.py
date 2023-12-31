@@ -143,7 +143,7 @@ def run(rank, world_size, data, args):
                         train_acc_tensor[0].item()))
 
         epoch_toc = time.time()
-        
+
         # build cache
         if not feature_server.cache_built and not sampler.cache_built:
             print("GPU memory usage",
@@ -157,10 +157,10 @@ def run(rank, world_size, data, args):
             ) - args.reserved_mem * 1024 * 1024 * 1024 - g["core_idx"].shape[
                 0] * 12 * 4
             mem_capacity = max(mem_capacity, 0)
-            
+
             if mem_capacity > 0:
-                print("Rank {} builds cache, GPU mem capacity = {:.3f} GB".format(
-                    rank, mem_capacity / 1024 / 1024 / 1024))
+                print("Rank {} builds cache, GPU mem capacity = {:.3f} GB".
+                      format(rank, mem_capacity / 1024 / 1024 / 1024))
                 cache_tic = time.time()
                 feature_cache_nids_list, adj_cache_nids = get_cache_nids(
                     (g, metadata), args, mem_capacity)
@@ -170,7 +170,7 @@ def run(rank, world_size, data, args):
                 cache_toc = time.time()
                 print("Rank {} builds cache time = {:.3f} sec".format(
                     rank, cache_toc - cache_tic))
-        
+
         sample_access_times, sample_hit_times, _ = sampler.get_hit_rates()
         sampler.reset_hit_counts()
         for l in range(len(fan_out)):

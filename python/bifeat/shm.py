@@ -421,7 +421,7 @@ class ShmManager(object):
                 del test_idx
 
             if not (with_valid or with_test):
-                core_idx = train_idx
+                core_idx = shm_train_idx
             else:
                 core_idx = torch.load(
                     os.path.join(self.dataset_path, "core_idx.pt"))
@@ -429,7 +429,6 @@ class ShmManager(object):
                 self.dataset_name + "_shm_core_idx", core_idx.dtype,
                 core_idx.shape)
             shm_core_idx.copy_(core_idx)
-            del core_idx
 
         else:
             shm_labels = self.create_shm_tensor(

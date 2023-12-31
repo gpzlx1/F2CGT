@@ -101,7 +101,8 @@ class CompressionManager(object):
         end = (rank + 1) * part_size
 
         if rank == 0:
-            self.train_seeds = self.train_seeds[torch.randperm(self.train_seeds.shape[0])]
+            self.train_seeds[:] = self.train_seeds[torch.randperm(
+                self.train_seeds.shape[0])]
         dist.barrier()
         print(self.train_seeds)
 
@@ -356,7 +357,7 @@ class CompressionManager(object):
             metadata["methods"] = self.methods
             torch.save(self.shm_manager.graph_meta_data,
                        os.path.join(self.cache_path, "metadata.pt"))
-            
+
             torch.save(self.labels, os.path.join(self.cache_path, "labels.pt"))
             torch.save(self.indptr, os.path.join(self.cache_path, "indptr.pt"))
             torch.save(self.indices, os.path.join(self.cache_path,

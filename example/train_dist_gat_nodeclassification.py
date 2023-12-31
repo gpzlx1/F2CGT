@@ -6,49 +6,17 @@ import torch.optim as optim
 import numpy as np
 import time
 import bifeat
-from load_dataset import load_compressed_dataset
-from models import SAGE, compute_acc, evaluate
+from models import GAT, compute_acc, evaluate
 from preprocess_compute_slope import get_cache_nids
 import argparse
-import torch.multiprocessing as mp
+import os
 
 torch.manual_seed(25)
 
-# def presampling(g, train_nids, sampler, batch_size):
-#     adj_hotness = torch.zeros(g["indptr"].numel() - 1,
-#                               device='cuda',
-#                               dtype=torch.float32)
-#     feat_hotness = torch.zeros(g["indptr"].numel() - 1,
-#                                device='cuda',
-#                                dtype=torch.float32)
-
-#     seeds_loader = bifeat.dataloading.SeedGenerator(train_nids,
-#                                                     batch_size,
-#                                                     shuffle=True)
-
-#     import dgl
-#     for it, seeds in enumerate(seeds_loader):
-#         frontier, _, blocks = sampler.sample_neighbors(seeds)
-#         for block in blocks:
-#             adj_hotness[block.dstdata[dgl.NID]] += 1
-#         feat_hotness[frontier] += 1
-
-#     dist.all_reduce(adj_hotness, op=dist.ReduceOp.SUM)
-#     dist.all_reduce(feat_hotness, op=dist.ReduceOp.SUM)
-#     adj_hotness = adj_hotness.cpu()
-#     feat_hotness = feat_hotness.cpu()
-
-#     return adj_hotness, feat_hotness
-
 
 def run(rank, world_size, data, args):
-    torch.cuda.set_device(rank)
-    device = torch.device("cuda")
-    dist.init_process_group('nccl',
-                            'tcp://127.0.0.1:12347',
-                            world_size=world_size,
-                            rank=rank)
-
+    torch.cuda.set_device(rank % args.num_trainers)
+    device = torch.cuda.current_device()
     tic = time.time()
 
     g, train_nids, metadata, codebooks = data
@@ -62,13 +30,6 @@ def run(rank, world_size, data, args):
                                                 g["indices"],
                                                 fan_out,
                                                 count_hit=True)
-
-    # print("Presampling")
-    # adj_hotness, feat_hotness = presampling(g, local_train_nids, sampler,
-    #                                         args.batch_size)
-    # g["adj_hotness"] = adj_hotness
-    # g["feat_hotness"] = feat_hotness
-
     feature_decompresser = bifeat.compression.Decompresser(
         metadata["feature_dim"], codebooks, metadata["methods"],
         [g["core_idx"].shape[0], metadata["num_nodes"]])
@@ -81,12 +42,20 @@ def run(rank, world_size, data, args):
                                                   args.batch_size,
                                                   shuffle=True)
 
-    model = SAGE(metadata["feature_dim"], args.num_hidden,
-                 metadata["num_classes"], len(fan_out), F.relu, args.dropout)
+    gat_heads = [int(head) for head in args.heads.split(",")]
+    model = GAT(metadata["feature_dim"],
+                args.num_hidden,
+                metadata["num_classes"],
+                len(fan_out),
+                gat_heads,
+                activation=F.relu,
+                feat_dropout=args.feat_dropout,
+                attn_dropout=args.attn_dropout)
     model = model.to(device)
-    model = nn.parallel.DistributedDataParallel(model,
-                                                device_ids=[rank],
-                                                output_device=rank)
+    model = nn.parallel.DistributedDataParallel(
+        model,
+        device_ids=[rank % args.num_trainers],
+        output_device=rank % args.num_trainers)
     loss_fcn = nn.CrossEntropyLoss()
     loss_fcn = loss_fcn.to(device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
@@ -369,31 +338,64 @@ def run(rank, world_size, data, args):
 
 
 def main(args):
+    dist.init_process_group(backend="nccl")
+    rank = dist.get_rank()
+    world_size = dist.get_world_size()
+    num_machines = world_size // args.num_trainers
+    # assert world_size == args.num_trainers
+    omp_thread_num = os.cpu_count() // args.num_trainers
+    torch.cuda.set_device(rank % args.num_trainers)
+    torch.set_num_threads(omp_thread_num)
+    print("Set device to {} and cpu threads num {}".format(
+        rank, omp_thread_num))
     assert args.feat_slope is not None
     assert args.adj_slope is not None
-
+    shm_manager = bifeat.shm.ShmManager(rank,
+                                        args.num_trainers,
+                                        args.root,
+                                        args.dataset,
+                                        pin_memory=False)
     if args.dataset == "friendster":
-        g, metadata, codebooks = load_compressed_dataset(args.root,
-                                                         args.dataset,
-                                                         with_valid=False,
-                                                         with_test=False)
+        g, metadata, codebooks = shm_manager.load_compressed_dataset(
+            with_valid=False, with_test=False)
     else:
-        g, metadata, codebooks = load_compressed_dataset(args.root,
-                                                         args.dataset,
-                                                         with_valid=True,
-                                                         with_test=True)
+        g, metadata, codebooks = shm_manager.load_compressed_dataset(
+            with_valid=True, with_test=True)
+
+    cheif_ranks_list = [i * args.num_trainers for i in range(num_machines)]
+    cheif_group = dist.new_group(cheif_ranks_list)
+
     train_nids = g.pop("train_idx")
-    train_nids = train_nids[torch.randperm(train_nids.shape[0])]
+    if rank % args.num_trainers == 0:
+        train_nids_comm_buffer = torch.empty_like(train_nids)
+    if rank == 0:
+        train_nids_comm_buffer[:] = train_nids
+    dist.barrier()
+    if rank == 0:
+        train_nids_comm_buffer = train_nids_comm_buffer[torch.randperm(
+            train_nids_comm_buffer.shape[0])]
+    if rank % args.num_trainers == 0:
+        train_nids_comm_buffer = train_nids_comm_buffer.cuda()
+        dist.broadcast(train_nids_comm_buffer, 0, group=cheif_group)
+        train_nids_comm_buffer = train_nids_comm_buffer.cpu()
+        torch.cuda.empty_cache()
+    if rank % args.num_trainers == 0:
+        train_nids[:] = train_nids_comm_buffer
+        del train_nids_comm_buffer
+    dist.barrier()
+    print(train_nids)
+
     data = g, train_nids, metadata, codebooks
 
-    print("Core feature: dim {} dtype {}".format(g["core_features"].shape[1],
-                                                 g["core_features"].dtype))
-    print("Frontier feature: dim {} dtype {}".format(g["features"].shape[1],
-                                                     g["features"].dtype))
+    if rank == 0:
+        print("Core feature: dim {} dtype {}".format(
+            g["core_features"].shape[1], g["core_features"].dtype))
+        print("Frontier feature: dim {} dtype {}".format(
+            g["features"].shape[1], g["features"].dtype))
 
-    mp.spawn(run,
-             args=(args.num_trainers, data, args),
-             nprocs=args.num_trainers)
+    run(rank, world_size, data, args)
+
+    dist.destroy_process_group(cheif_group)
 
 
 if __name__ == "__main__":
@@ -416,13 +418,15 @@ if __name__ == "__main__":
         "number of trainers participated in the compress, no greater than available GPUs num"
     )
     argparser.add_argument("--lr", type=float, default=0.003)
-    argparser.add_argument("--dropout", type=float, default=0.5)
     argparser.add_argument("--batch-size", type=int, default=1000)
     argparser.add_argument("--batch-size-eval", type=int, default=100000)
     argparser.add_argument("--log-every", type=int, default=20)
     argparser.add_argument("--eval-every", type=int, default=5)
     argparser.add_argument("--fan-out", type=str, default="5,10,15")
-    argparser.add_argument("--num-hidden", type=int, default=256)
+    argparser.add_argument("--num-hidden", type=int, default=32)
+    argparser.add_argument("--heads", type=str, default="8,8,1")
+    argparser.add_argument("--feat-dropout", type=float, default=0.1)
+    argparser.add_argument("--attn-dropout", type=float, default=0.1)
     argparser.add_argument("--num-epochs", type=int, default=20)
     argparser.add_argument("--breakdown", action="store_true")
     argparser.add_argument("--reserved-mem",
