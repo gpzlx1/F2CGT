@@ -55,9 +55,10 @@ class SAGE(nn.Module):
             for nodes in tqdm.tqdm(dataloader):
                 src_nodes, dst_nodes, blocks = sampler.sample_neighbors(nodes)
                 if l == 0:
-                    x = feature[src_nodes, nodes.shape[0]]
+                    x = feature[src_nodes, 0]
                 else:
                     x = feature[src_nodes.cpu()].cuda()
+                torch.cuda.empty_cache()
                 h = layer(blocks[0], x)
                 if l != len(self.layers) - 1:
                     h = self.activation(h)
@@ -138,9 +139,10 @@ class GAT(nn.Module):
             for nodes in tqdm.tqdm(dataloader):
                 src_nodes, dst_nodes, blocks = sampler.sample_neighbors(nodes)
                 if l == 0:
-                    x = feature[src_nodes, nodes.shape[0]]
+                    x = feature[src_nodes, 0]
                 else:
                     x = feature[src_nodes.cpu()].cuda()
+                torch.cuda.empty_cache()
                 h = layer(blocks[0], x)
                 if l == self.n_layers - 1:
                     h = h.mean(1)

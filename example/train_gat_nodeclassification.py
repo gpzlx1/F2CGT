@@ -10,6 +10,7 @@ from load_dataset import load_compressed_dataset
 from models import GAT, compute_acc, evaluate
 from preprocess_compute_slope import get_cache_nids
 import argparse
+import torch.multiprocessing as mp
 
 torch.manual_seed(25)
 
@@ -364,7 +365,6 @@ def main(args):
     print("Frontier feature: dim {} dtype {}".format(g["features"].shape[1],
                                                      g["features"].dtype))
 
-    import torch.multiprocessing as mp
     mp.spawn(run,
              args=(args.num_trainers, data, args),
              nprocs=args.num_trainers)
