@@ -124,6 +124,9 @@ class CompressionManager(object):
         self.feat_hotness = self.feat_hotness.cpu()
 
     def graph_reorder(self):
+        if dist.get_rank() == dist.get_world_size() - 1:
+            self.original_core_idx = self.core_idx.clone()
+
         if self.shm_manager._is_chief:
             assert self.hotness is not None
 
@@ -238,10 +241,11 @@ class CompressionManager(object):
             else:
                 raise ValueError
         else:
+            print(rank)
             if self.methods[0] == 'sq':
                 if self.features is not None:
                     self.compressed_core_feature, self.core_codebook = sq_compress(
-                        self.features[self.core_idx],
+                        self.features[self.original_core_idx],
                         self.configs[0]['target_bits'], 'cuda',
                         self.sample_sizes[0], self.compress_batch_sizes[0])
                 else:
@@ -251,14 +255,15 @@ class CompressionManager(object):
                         'cuda',
                         self.sample_sizes[0],
                         self.compress_batch_sizes[0],
-                        fake_feat_items=self.core_idx.shape[0],
+                        fake_feat_items=self.original_core_idx.shape[0],
                         fake_feat_dim=self.fake_feat_dim)
             elif self.methods[0] == 'vq':
                 if self.features is not None:
                     self.compressed_core_feature, self.core_codebook = vq_compress(
-                        self.features[self.core_idx], self.configs[0]['width'],
-                        self.configs[0]['length'], 'cuda',
-                        self.sample_sizes[0], self.compress_batch_sizes[0])
+                        self.features[self.original_core_idx],
+                        self.configs[0]['width'], self.configs[0]['length'],
+                        'cuda', self.sample_sizes[0],
+                        self.compress_batch_sizes[0])
                 else:
                     self.compressed_core_feature, self.core_codebook = vq_compress(
                         None,
@@ -267,7 +272,7 @@ class CompressionManager(object):
                         'cuda',
                         self.sample_sizes[0],
                         self.compress_batch_sizes[0],
-                        fake_feat_items=self.core_idx.shape[0],
+                        fake_feat_items=self.original_core_idx.shape[0],
                         fake_feat_dim=self.fake_feat_dim)
             else:
                 raise ValueError
