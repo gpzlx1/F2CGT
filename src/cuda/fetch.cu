@@ -4,7 +4,7 @@
 
 #define BLOCK_SIZE 128
 
-namespace pg {
+namespace bifeat {
 
 template <typename IdType, typename IndexType, typename FloatType,
           int TILE_SIZE>
@@ -78,6 +78,63 @@ torch::Tensor FeatureFetchDataWithCachingCUDA(torch::Tensor cpu_data,
   return torch::Tensor();
 }
 
+//////////////////////////////////////////////////////////////////////////
+
+template <typename IndexType, typename FloatType>
+__global__ void _FeatureFetchDataWithCachingKernel_v2(
+    const int64_t num_elem, const int64_t data_dim,
+    const IndexType *__restrict__ const in_nids,
+    const IndexType *__restrict__ const local_nids,
+    FloatType *__restrict__ const cpu_data,
+    FloatType *__restrict__ const gpu_data,
+    FloatType *__restrict__ const out_data) {
+  int warp_size = 32;
+  int64_t thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+  int64_t warp_id = thread_id / warp_size;
+  int64_t lane = thread_id % warp_size;
+  int64_t warp_num = blockDim.x * gridDim.x / warp_size;
+
+  for (int i = warp_id; i < num_elem; i += warp_num) {
+    FloatType *input_ptr = local_nids[i] < 0
+                               ? cpu_data + in_nids[i] * data_dim
+                               : gpu_data + local_nids[i] * data_dim;
+
+    for (int j = lane; j < data_dim; j += warp_size) {
+      out_data[i * data_dim + j] = input_ptr[j];
+    }
+  }
+}
+
+torch::Tensor FeatureFetchDataWithCachingCUDA_V2(torch::Tensor cpu_data,
+                                                 torch::Tensor gpu_data,
+                                                 torch::Tensor nid,
+                                                 torch::Tensor local_nid) {
+  CHECK_CUDA(gpu_data);
+  CHECK_CUDA(nid);
+  CHECK_CUDA(local_nid);
+  PG_ID_TYPE_SWITCH(nid.dtype(), IndexType, {
+    PG_VALUE_TYPE_SWITCH(gpu_data.dtype(), FloatType, {
+      int num_items = nid.numel();
+      int dim = gpu_data.size(1);
+      torch::Tensor data_buff =
+          torch::empty({num_items, dim}, gpu_data.options());
+
+      constexpr int TILE_SIZE = 128 / BLOCK_SIZE;
+      const dim3 block(BLOCK_SIZE);
+      const dim3 grid((num_items + TILE_SIZE - 1) / TILE_SIZE);
+
+      _FeatureFetchDataWithCachingKernel_v2<IndexType, FloatType>
+          <<<grid, block>>>(
+              num_items, dim, nid.data_ptr<IndexType>(),
+              local_nid.data_ptr<IndexType>(), cpu_data.data_ptr<FloatType>(),
+              gpu_data.data_ptr<FloatType>(), data_buff.data_ptr<FloatType>());
+      return data_buff;
+    });
+  });
+
+  return torch::Tensor();
+}
+
 template <typename IndexType, typename FloatType, int TILE_SIZE>
 __global__ void _FeatureFetchDataKernel(
     const int64_t num_nids, const int64_t data_dim,
@@ -122,4 +179,41 @@ torch::Tensor FeatureFetchDataCUDA(torch::Tensor data, torch::Tensor nid) {
   return torch::Tensor();
 }
 
-}  // namespace pg
+template <typename DataType, typename IndexType, int WARP_SIZE>
+__global__ void CUDAIndexFetchKernel(DataType *src, IndexType *src_index,
+                                     DataType *dst, IndexType *dst_index,
+                                     int64_t num_elem, int64_t dim) {
+  int64_t thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+  int64_t warp_id = thread_id / WARP_SIZE;
+  int64_t lane = thread_id % WARP_SIZE;
+  int64_t warp_num = blockDim.x * gridDim.x / WARP_SIZE;
+
+  for (int i = warp_id; i < num_elem; i += warp_num) {
+    int64_t src_idx = src_index[i];
+    int64_t dst_idx = dst_index[i];
+    for (int j = lane; j < dim; j += WARP_SIZE) {
+      dst[dst_idx * dim + j] = src[src_idx * dim + j];
+    }
+  }
+}
+
+void CUDAIndexFetch(torch::Tensor src, torch::Tensor src_index,
+                    torch::Tensor dst, torch::Tensor dst_index) {
+  CHECK(src.size(1) == dst.size(1));
+  CHECK(dst_index.numel() == src_index.numel());
+  int64_t num_elem = src_index.numel();
+  int64_t dim = src.size(1);
+
+  PG_VALUE_TYPE_SWITCH(src.dtype(), DataType, {
+    PG_ID_TYPE_SWITCH(src_index.dtype(), IndexType, {
+      int block_size = 256;
+      int grid_size = (num_elem + block_size - 1) / block_size;
+      CUDAIndexFetchKernel<DataType, IndexType, 32><<<grid_size, block_size>>>(
+          src.data_ptr<DataType>(), src_index.data_ptr<IndexType>(),
+          dst.data_ptr<DataType>(), dst_index.data_ptr<IndexType>(), num_elem,
+          dim);
+    });
+  });
+}
+
+}  // namespace bifeat

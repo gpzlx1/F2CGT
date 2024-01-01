@@ -1,0 +1,3 @@
+[submodule "third_party/BGHT"]
+	path = third_party/BGHT
+	url = https://github.com/owensgroup/BGHT

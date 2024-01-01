@@ -5,7 +5,7 @@
 #define MINPDIM 16
 #define BATCH 8
 
-namespace pg {
+namespace bifeat {
 
 __global__ void convert_csc_kernel(int *indptr, const int *dst, int node_num,
                                    int edge_num) {
@@ -157,4 +157,4 @@ void meanaggr(torch::Tensor &output, const torch::Tensor &input,
                   node_num, edge_num);
 }
 
-}  // namespace pg
+}  // namespace bifeat
