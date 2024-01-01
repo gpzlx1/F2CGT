@@ -247,6 +247,10 @@ class FeatureLoadServer:
         if self._count_hit:
             self.access_times += index.shape[0]
 
+        result = torch.empty((index.numel(), self._decompresser.feat_dim),
+                             dtype=torch.float,
+                             device='cuda')
+
         if seeds_num > 0:
             searched_seeds_index = self._core_hash_map.query(
                 index[:seeds_num], 0)
@@ -268,36 +272,30 @@ class FeatureLoadServer:
                 if self._count_hit:
                     self.core_hit_times += torch.sum(cache_nids >= 0).item()
 
-        else:
-            seeds_compressed_features = torch.empty(
-                (0, self._core_compressed_feature.shape[1]),
-                dtype=self._core_compressed_feature.dtype,
-                device="cuda")
+            self._decompresser.decompress_v2(seeds_compressed_features,
+                                             searched_seeds_index, 0, result,
+                                             0)
 
-        if self.full_cached:
-            if self._count_hit:
-                self.other_hit_times += index.shape[0] - seeds_num
-            frontier_compressed_features = self._cached_feature[
-                index[seeds_num:].long()]
-        elif self.no_cached:
-            frontier_compressed_features = capi._CAPI_fetch_feature_data(
-                self._compressed_feature, index[seeds_num:])
-        else:
-            local_nids = self._cache_hashmap.query(index[seeds_num:], 0)
-            frontier_compressed_features = capi._CAPI_fetch_feature_data_with_caching_v2(
-                self._compressed_feature, self._cached_feature,
-                index[seeds_num:], local_nids)
-            if self._count_hit:
-                self.other_hit_times += torch.sum(local_nids >= 0).item()
+        if seeds_num < index.shape[0]:
+            if self.full_cached:
+                if self._count_hit:
+                    self.other_hit_times += index.shape[0] - seeds_num
+                frontier_compressed_features = self._cached_feature[
+                    index[seeds_num:].long()]
+            elif self.no_cached:
+                frontier_compressed_features = capi._CAPI_fetch_feature_data(
+                    self._compressed_feature, index[seeds_num:])
+            else:
+                local_nids = self._cache_hashmap.query(index[seeds_num:], 0)
+                frontier_compressed_features = capi._CAPI_fetch_feature_data_with_caching_v2(
+                    self._compressed_feature, self._cached_feature,
+                    index[seeds_num:], local_nids)
+                if self._count_hit:
+                    self.other_hit_times += torch.sum(local_nids >= 0).item()
 
-        result = torch.empty((index.numel(), self._decompresser.feat_dim),
-                             dtype=torch.float,
-                             device='cuda')
-        self._decompresser.decompress_v2(seeds_compressed_features,
-                                         searched_seeds_index, 0, result, 0)
-        self._decompresser.decompress_v2(frontier_compressed_features,
-                                         index[seeds_num:], 1, result,
-                                         seeds_num)
+            self._decompresser.decompress_v2(frontier_compressed_features,
+                                             index[seeds_num:], 1, result,
+                                             seeds_num)
 
         return result
 
