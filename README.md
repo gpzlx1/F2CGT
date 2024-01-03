@@ -14,7 +14,7 @@ Extensive evaluation of `F2CGT` on two popular GNN models and four datasets, inc
 * PyTorch v2.1.2
 * DGL v1.1.3
 
-## Install HADES
+## Install F2CGT
 We use `pip` to manage our python environment.
 
 1. Install PyTorch and DGL
