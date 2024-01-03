@@ -81,8 +81,6 @@ We use `pip` to manage our python environment.
 
 3. Compute the slopes required by on-GPU cache:
 
-   Edit [example/ip_config.txt](example/ip_config.txt), and add the IPs of all the machines that will participate in the training (they can access each other by SSH without a password). For example:
-
    ```shell
    python3 example/preprocess_compute_slope.py \
      --dataset ${dataset name} \
