@@ -87,7 +87,7 @@ We use `pip` to manage our python environment.
      --root ${path to the compressed graph generated in step 2} \
      --num-trainers ${#GPUs} \
      --fan-out 12,12,12 \
-     --batch-size 1000,1000,1000 \
+     --batch-size 1000 \
      --adj-step 0.05 \
      --adj-epochs 10 \
      --feat-step 0.2 \
