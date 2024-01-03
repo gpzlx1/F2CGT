@@ -34,18 +34,17 @@ def get_cache_nids(data, args, mem_capacity, save_memory_mode=False):
     feature_cache_nids_list, adj_cache_nids = bifeat.cache.cache_idx_select(
         feat_hotness_list, g["adj_hotness"], feat_slope_list, args.adj_slope,
         feat_space_list, adj_space_tensor, mem_capacity)
-    
-    
+
     if save_memory_mode:
         mask = g["adj_hotness"][adj_cache_nids] > 0
         adj_cache_nids = adj_cache_nids[mask]
-        feature_cache_nids_list = [nids[feat_hotness_list[i][nids] > 0] for i, nids in enumerate(feature_cache_nids_list)]
-    
-    
+        feature_cache_nids_list = [
+            nids[feat_hotness_list[i][nids] > 0]
+            for i, nids in enumerate(feature_cache_nids_list)
+        ]
+
     adj_cache_nids = adj_cache_nids.cuda()
     feature_cache_nids_list = [nids.cuda() for nids in feature_cache_nids_list]
-    
-    
 
     return feature_cache_nids_list, adj_cache_nids
 
@@ -92,7 +91,7 @@ def run(rank, world_size, data, args):
 
     if rank == 0:
         print("====================================")
-        print("Graph typo slope: {:.6f}".format(adj_slope))
+        print("Graph adj slope: {:.6f}".format(adj_slope))
         print("Feature slope: {:.6f}".format(feat_slope))
         print("Compute slopes time: {:.3f} sec".format(toc - tic))
         print("====================================")
