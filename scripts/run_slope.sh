@@ -1,4 +1,0 @@
-python3.10 example/preprocess_compute_slope.py --dataset ogbn-products --root /home/ubuntu/workspace/compressed_dataset/ogbn-products/2/ --num-trainers 8 --fan-out 12,12,12 --adj-step 0.05 --adj-epochs 10 --feat-step 0.2 --feat-epochs 5
-python3.10 example/preprocess_compute_slope.py --dataset ogbn-papers100M --root /home/ubuntu/workspace/compressed_dataset/ogbn-papers100M/2/ --num-trainers 8 --fan-out 10,25 --adj-step 0.015 --adj-epochs 10 --feat-step 0.03 --feat-epochs 5
-python3.10 example/preprocess_compute_slope.py --dataset friendster --root /home/ubuntu/workspace/compressed_dataset/friendster/2/ --num-trainers 8 --fan-out 12,12,12 --adj-step 0.01 --adj-epochs 10 --feat-step 0.02 --feat-epochs 5
-python3.10 example/preprocess_compute_slope.py --dataset mag240M --root /home/ubuntu/workspace/compressed_dataset/mag240m/2/ --num-trainers 8 --fan-out 10,25 --adj-step 0.01 --adj-epochs 10 --feat-step 0.02 --feat-epochs 5

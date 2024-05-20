@@ -1,5 +1,25 @@
-cmake_minimum_required(VERSION 3.15.0)
-project(BiFeatLib LANGUAGES CUDA CXX)
+cmake_minimum_required(VERSION 3.26.4)
+
+# ------------- configure rapids-cmake --------------#
+
+include(cmake/thirdparty/fetch_rapids.cmake)
+include(rapids-cmake)
+include(rapids-cpm)
+include(rapids-cuda)
+include(rapids-export)
+include(rapids-find)
+
+# ------------- configure project --------------#
+
+rapids_cuda_init_architectures(F2CGTLib)
+
+project(F2CGTLib LANGUAGES CUDA CXX)
+
+# ------------- configure raft -----------------#
+
+rapids_cpm_init()
+include(cmake/thirdparty/get_raft.cmake)
+#find_package(raft COMPONENTS compiled distributed)
 
 # set flag
 set(CMAKE_CXX_FLAGS "-Wall -Wextra")
@@ -9,7 +29,7 @@ set(CMAKE_BUILD_TYPE Release)
 
 # find python
 find_package(Python 3.6 COMPONENTS Interpreter Development REQUIRED)
-set(PYTHON_INTERP python)
+set(PYTHON_INTERP python3)
 message(STATUS "Using Python interpreter: ${PYTHON_INTERP}")
 
 # find torch
@@ -27,7 +47,7 @@ find_package(Torch REQUIRED)
 # link against libtorch_python.so
 find_library(TORCH_PYTHON_LIBRARY torch_python PATHS "${TORCH_INSTALL_PREFIX}/lib")
 message(STATUS "TORCH_PYTHON_LIBRARY: ${TORCH_PYTHON_LIBRARY}")
-list(APPEND BiFeat_EXTERNAL_LIB ${TORCH_LIBRARIES} ${TORCH_PYTHON_LIBRARY})
+list(APPEND F2CGT_EXTERNAL_LIB ${TORCH_LIBRARIES} ${TORCH_PYTHON_LIBRARY})
 
 # find pybind11
 file(TO_NATIVE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/scripts/find_pybind11.py FIND_PYBIND_PY)
@@ -39,35 +59,21 @@ message(STATUS "find_pybind11.py output: ${PYBIND_CMAKE_DIR}")
 set(pybind11_DIR ${PYBIND_CMAKE_DIR})
 find_package(pybind11 REQUIRED)
 
-# set openmp
-include(FindOpenMP)
-if(OPENMP_FOUND)
-  set(CMAKE_CXX_FLAGS "${OpenMP_CXX_FLAGS} ${CMAKE_CXX_FLAGS}")
-endif(OPENMP_FOUND)
-message(STATUS "Build with OpenMP")
-
-# Set bght
-# cmake submodule
-add_subdirectory(third_party/BGHT)
-list(APPEND BiFeat_EXTERNAL_LIB bght)
-
 
 # Define our library target
-file(GLOB BiFeat_SRC
-  src/cuda/*.cu
-  src/cuda/*.cc
+file(GLOB F2CGT_SRC
   src/*.cc
-  src/hashmap/*.cu
+  src/*.cu
 )
-pybind11_add_module(BiFeatLib ${BiFeat_SRC})
-set_target_properties(BiFeatLib PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-set_target_properties(BiFeatLib PROPERTIES CUDA_STANDARD 17)
-set_target_properties(BiFeatLib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+pybind11_add_module(F2CGTLib ${F2CGT_SRC})
+set_target_properties(F2CGTLib PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+set_target_properties(F2CGTLib PROPERTIES CUDA_STANDARD 17)
+set_target_properties(F2CGTLib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 TARGET_COMPILE_OPTIONS(
-  BiFeatLib PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-extended-lambda>)
+  F2CGTLib PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-extended-lambda>)
 
 # Enable C++17
-target_compile_features(BiFeatLib PRIVATE cxx_std_17)
+target_compile_features(F2CGTLib PRIVATE cxx_std_17)
 
 # Link against LibTorch
-target_link_libraries(BiFeatLib PRIVATE ${BiFeat_EXTERNAL_LIB})
+target_link_libraries(F2CGTLib PRIVATE ${F2CGT_EXTERNAL_LIB} raft::raft raft::compiled)

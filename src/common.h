@@ -1,17 +1,4 @@
-#ifndef PG_COMMON_H_
-#define PG_COMMON_H_
-
-#include <cuda.h>
-#include <cuda_runtime.h>
-#include <cuda_runtime_api.h>
-#include <torch/script.h>
-
-#define CHECK_CPU(x) \
-  TORCH_CHECK(!x.device().is_cuda(), #x " must be a CPU tensor")
-#define CHECK_CUDA(x) \
-  TORCH_CHECK(x.device().is_cuda(), #x " must be a CUDA tensor")
-#define AlignUp(X, ALIGN_SIZE) (((X) + (ALIGN_SIZE)-1) / (ALIGN_SIZE))
-#define MIN(x, y) ((x < y) ? x : y)
+#pragma once
 
 #define CUDA_CALL(call)                                                  \
   {                                                                      \
@@ -27,64 +14,97 @@
     }                                                                    \
   }
 
-#define PG_ID_TYPE_SWITCH(val, IdType, ...)          \
+#define PG_SPMM_FLOAT_TYPE_SWITCH(val, IdType, ...)               \
+  do {                                                            \
+    if ((val) == torch::kFloat32) {                               \
+      typedef float IdType;                                       \
+      { __VA_ARGS__ }                                             \
+    } else if ((val) == torch::kFloat16) {                        \
+      typedef at::Half IdType;                                    \
+      { __VA_ARGS__ }                                             \
+    } else if ((val) == torch::kFloat64) {                        \
+      typedef double IdType;                                      \
+      { __VA_ARGS__ }                                             \
+    } else {                                                      \
+      LOG(FATAL) << "ID can only be float64, float32 or float16"; \
+    }                                                             \
+  } while (0);
+
+#define PG_SPMM_INT_TYPE_SWITCH(val, IntType, ...)                        \
+  do {                                                                    \
+    if ((val) == torch::kInt16) {                                         \
+      typedef int16_t IntType;                                            \
+      { __VA_ARGS__ }                                                     \
+    } else if ((val) == torch::kUInt8) {                                  \
+      typedef uint8_t IntType;                                            \
+      { __VA_ARGS__ }                                                     \
+    } else if ((val) == torch::kInt8) {                                   \
+      typedef int8_t IntType;                                             \
+      { __VA_ARGS__ }                                                     \
+    } else if ((val) == torch::kInt32) {                                  \
+      typedef int32_t IntType;                                            \
+      { __VA_ARGS__ }                                                     \
+    } else if ((val) == torch::kInt64) {                                  \
+      typedef int64_t IntType;                                            \
+      { __VA_ARGS__ }                                                     \
+    } else {                                                              \
+      LOG(FATAL) << "Int can only be int64, int32, int16, int8 or uint8"; \
+    }                                                                     \
+  } while (0);
+
+#define PG_FLOAT_TYPE_SWITCH(val, IdType, ...)       \
   do {                                               \
-    if ((val) == torch::kInt32) {                    \
-      typedef int32_t IdType;                        \
+    if ((val) == torch::kFloat32) {                  \
+      typedef float IdType;                          \
       { __VA_ARGS__ }                                \
-    } else if ((val) == torch::kInt64) {             \
-      typedef int64_t IdType;                        \
+    } else if ((val) == torch::kFloat16) {           \
+      typedef at::Half IdType;                       \
       { __VA_ARGS__ }                                \
     } else {                                         \
       LOG(FATAL) << "ID can only be int32 or int64"; \
     }                                                \
   } while (0);
 
-#define PG_INT_TYPE_SWITCH(val, IntType, ...)         \
-  do {                                                \
-    if ((val) == torch::kInt32) {                     \
-      typedef int32_t IntType;                        \
-      { __VA_ARGS__ }                                 \
-    } else if ((val) == torch::kInt64) {              \
-      typedef int64_t IntType;                        \
-      { __VA_ARGS__ }                                 \
-    } else if ((val) == torch::kInt16) {              \
-      typedef int16_t IntType;                        \
-      { __VA_ARGS__ }                                 \
-    } else if ((val) == torch::kInt8) {               \
-      typedef int8_t IntType;                         \
-      { __VA_ARGS__ }                                 \
-    } else if ((val) == torch::kUInt8) {              \
-      typedef uint8_t IntType;                        \
-      { __VA_ARGS__ }                                 \
-    } else {                                          \
-      LOG(FATAL) << "Int can only be int32 or int64"; \
-    }                                                 \
+#define PG_INT_TYPE_SWITCH(val, IntType, ...)                 \
+  do {                                                        \
+    if ((val) == torch::kInt16) {                             \
+      typedef int16_t IntType;                                \
+      { __VA_ARGS__ }                                         \
+    } else if ((val) == torch::kUInt8) {                      \
+      typedef uint8_t IntType;                                \
+      { __VA_ARGS__ }                                         \
+    } else if ((val) == torch::kInt8) {                       \
+      typedef int8_t IntType;                                 \
+      { __VA_ARGS__ }                                         \
+    } else {                                                  \
+      LOG(FATAL) << "Int can only be int16 or int8 or uint8"; \
+    }                                                         \
   } while (0);
 
-#define PG_VALUE_TYPE_SWITCH(val, VType, ...)                                 \
-  do {                                                                        \
-    if ((val) == torch::kInt32) {                                             \
-      typedef int32_t VType;                                                  \
-      { __VA_ARGS__ }                                                         \
-    } else if ((val) == torch::kInt64) {                                      \
-      typedef int64_t VType;                                                  \
-      { __VA_ARGS__ }                                                         \
-    } else if ((val) == torch::kInt16) {                                      \
-      typedef int16_t VType;                                                  \
-      { __VA_ARGS__ }                                                         \
-    } else if ((val) == torch::kInt8) {                                       \
-      typedef int8_t VType;                                                   \
-      { __VA_ARGS__ }                                                         \
-    } else if ((val) == torch::kUInt8) {                                      \
-      typedef uint8_t VType;                                                  \
-      { __VA_ARGS__ }                                                         \
-    } else if ((val) == torch::kFloat32) {                                    \
-      typedef float VType;                                                    \
-      { __VA_ARGS__ }                                                         \
-    } else {                                                                  \
-      LOG(FATAL)                                                              \
-          << "Value can only be uint8, int8, int16, int32, int64 or float32"; \
-    }                                                                         \
+#define PG_TARGET_BITS_SWITCH(val, TARGET_BITS, ...)        \
+  do {                                                      \
+    if ((val) == 1) {                                       \
+      const int TARGET_BITS = 1;                            \
+      { __VA_ARGS__ }                                       \
+    } else if ((val) == 2) {                                \
+      const int TARGET_BITS = 2;                            \
+      { __VA_ARGS__ }                                       \
+    } else if ((val) == 4) {                                \
+      const int TARGET_BITS = 4;                            \
+      { __VA_ARGS__ }                                       \
+    } else if ((val) == 8) {                                \
+      const int TARGET_BITS = 8;                            \
+      { __VA_ARGS__ }                                       \
+    } else if ((val) == 16) {                               \
+      const int TARGET_BITS = 16;                           \
+      { __VA_ARGS__ }                                       \
+    } else {                                                \
+      LOG(FATAL) << "TARGET_BITS can only be [1,2,4,8,16]"; \
+    }                                                       \
   } while (0);
-#endif
+
+#define CHECK_CPU(x) \
+  TORCH_CHECK(!x.device().is_cuda(), #x " must be a CPU tensor")
+
+#define CHECK_CUDA(x) \
+  TORCH_CHECK(x.device().is_cuda(), #x " must be a CUDA tensor")
