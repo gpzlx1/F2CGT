@@ -6,14 +6,6 @@ from pathlib import Path
 from setuptools import Extension, setup, find_packages
 from setuptools.command.build_ext import build_ext
 
-PLAT_TO_CMAKE = {
-    "win32": "Win32",
-    "win-amd64": "x64",
-    "win-arm32": "ARM",
-    "win-arm64": "ARM64",
-}
-
-
 class CMakeExtension(Extension):
 
     def __init__(self, name: str, sourcedir: str = "") -> None:
@@ -50,14 +42,15 @@ class CMakeBuild(build_ext):
 
 
 setup(
-    name="BiFeat",
+    name="F2CGT",
     version="0.0.1",
     author="",
     author_email="",
     description="",
     long_description="",
     packages=find_packages(),
-    ext_modules=[CMakeExtension("BiFeatLib", "..")],
+    ext_modules=[CMakeExtension("F2CGTLib", "..")],
     cmdclass={"build_ext": CMakeBuild},
     zip_safe=False,
-)
+    )
+
