@@ -8,6 +8,10 @@
 
 `F2CGT` supports scalar, vector and two-level quantizations.
 
+[Paper in VLDB2024](https://dl.acm.org/doi/10.14778/3681954.3681968)
+
+[Supplementary material](https://github.com/gpzlx1/F2CGT-supplemental)
+
 # Install
 We use `conda` to manage our python environment.
 
@@ -101,3 +105,24 @@ We use `conda` to manage our python environment.
      ```
 
 More scripts about training can be found in `scripts`.
+
+# Citation
+```latex
+@article{10.14778/3681954.3681968,
+author = {Ma, Yuxin and Gong, Ping and Wu, Tianming and Yi, Jiawei and Yang, Chengru and Li, Cheng and Peng, Qirong and Xie, Guiming and Bao, Yongcheng and Liu, Haifeng and Xu, Yinlong},
+title = {Eliminating Data Processing Bottlenecks in GNN Training over Large Graphs via Two-level Feature Compression},
+year = {2024},
+issue_date = {July 2024},
+publisher = {VLDB Endowment},
+volume = {17},
+number = {11},
+issn = {2150-8097},
+url = {https://doi.org/10.14778/3681954.3681968},
+doi = {10.14778/3681954.3681968},
+abstract = {Training GNNs over large graphs faces a severe data processing bottleneck, involving both sampling and feature loading. To tackle this issue, we introduce F2CGT, a fast GNN training system incorporating feature compression. To avoid potential accuracy degradation, we propose a two-level, hybrid feature compression approach that applies different compression methods to various graph nodes. This differentiated choice strikes a balance between rounding errors, compression ratios, model accuracy loss, and preprocessing costs. Our theoretical analysis proves that this approach offers convergence and comparable model accuracy as the conventional training without feature compression. Additionally, we also co-design the on-GPU cache sub-system with compression-enabled training within F2CGT. The new cache sub-system, driven by a cost model, runs new cache policies to carefully choose graph nodes with high access frequencies, and well partitions the spare GPU memory for various types of graph data, for improving cache hit rates. Finally, extensive evaluation of F2CGT on two popular GNN models and four datasets, including three large public datasets, demonstrates that F2CGT achieves a compression ratio of up to 128 and provides GNN training speedups of 1.23-2.56\texttimes{} and 3.58--71.46\texttimes{} for single-machine and distributed training, respectively, with up to 32 GPUs and marginal accuracy loss.},
+journal = {Proc. VLDB Endow.},
+month = {aug},
+pages = {2854–2866},
+numpages = {13}
+}
+```
