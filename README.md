@@ -40,20 +40,24 @@ We use `conda` to manage our python environment.
 * Install raft
 
   ```shell
-  # for CUDA 11.8
-  mamba install -c rapidsai -c conda-forge -c nvidia libraft-headers==23.10 libraft==23.10 pylibraft==23.10 cuda-version=11.8
+  # for CUDA 12.4
+  mamba install -c rapidsai -c conda-forge -c nvidia libraft-headers==23.10 libraft==23.10 pylibraft==23.10 cuda-version=12.4
   ```
 
 * Install DGL and PyTorch
 
   ```shell
-  # python3 3.10.14
-  # raft 23.10
-  # mamba install -c dglteam/label/th24_cu124 dgl
   pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cu124
   pip install dgl -f https://data.dgl.ai/wheels/torch-2.4/cu124/repo.html
   pip install pybind11
   ```
+
+* Modify "raft/cluster/detail/kmeans.cuh"
+  ```c++
+  // disable all logger::get(RAFT_NAME).set_level(params.verbosity); in "raft/cluster/detail/kmeans.cuh"
+  // logger::get(RAFT_NAME).set_level(params.verbosity);
+  ```
+  * Reason: https://github.com/rapidsai/raft/issues/2357
 
 * Install F2CGT
 
@@ -63,7 +67,7 @@ We use `conda` to manage our python environment.
    # install third_party
    cd F2CGT/third_party/ShmTensor
    # replace 8.6 with your device sm ability
-   TORCH_CUDA_ARCH_LIST="8.6" bash install.sh
+   bash install.sh
 
    # install F2CGT
    cd F2CGT
