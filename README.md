@@ -26,9 +26,15 @@ We use `conda` to manage our python environment.
   
   ## install 'mamba'
   conda install -n base mamba
+
+  ## init 'mamba'
+  mamba shell init --shell bash --root-prefix=~/.local/share/mamba
   
   ## new env
-  mamba create -n raft-23.10 python=3.10
+  mamba create -n raft python=3.10
+
+  ## activate
+  mamba activate raft
   ```
 
 * Install raft
@@ -43,8 +49,10 @@ We use `conda` to manage our python environment.
   ```shell
   # python3 3.10.14
   # raft 23.10
-  mamba install -c dglteam/label/cu118 dgl==2.0
-  mamba install pybind11
+  # mamba install -c dglteam/label/th24_cu124 dgl
+  pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cu124
+  pip install dgl -f https://data.dgl.ai/wheels/torch-2.4/cu124/repo.html
+  pip install pybind11
   ```
 
 * Install F2CGT
@@ -54,7 +62,8 @@ We use `conda` to manage our python environment.
 
    # install third_party
    cd F2CGT/third_party/ShmTensor
-   bash install.sh
+   # replace 8.6 with your device sm ability
+   TORCH_CUDA_ARCH_LIST="8.6" bash install.sh
 
    # install F2CGT
    cd F2CGT
@@ -109,6 +118,7 @@ More scripts about training can be found in `scripts`.
 # Known Issues
 
 * We recommend using 8 GPUs for better compression quality. While 1 GPU can complete the compression, you'll need to adjust the block slice method in scripts to maintain the same quality.
+* In fact, the current implementation of compression is unreasonable—it should be decoupled from the number of GPUs, but this hasn't been implemented yet and will be addressed later. If this feature is urgently needed, please file an issue.
 
 # Citation
 ```latex
