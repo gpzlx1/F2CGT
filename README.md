@@ -106,6 +106,10 @@ We use `conda` to manage our python environment.
 
 More scripts about training can be found in `scripts`.
 
+# Known Issues
+
+* We recommend using 8 GPUs for better compression quality. While 1 GPU can complete the compression, you'll need to adjust the block slice method in scripts to maintain the same quality.
+
 # Citation
 ```latex
 @article{10.14778/3681954.3681968,
