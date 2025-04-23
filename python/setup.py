@@ -22,6 +22,9 @@ class CMakeBuild(build_ext):
         cmake_args = [
             f"-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={extdir}{os.sep}",
             f"-DPYTHON_EXECUTABLE={sys.executable}",
+            f"-DRAFT_NVTX=OFF",
+            f"-DCMAKE_CUDA_ARCHITECTURES='NATIVE'",
+            f"-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
         ]
         build_args = []
 
